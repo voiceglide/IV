@@ -44,6 +44,23 @@ export async function run(browser, url, r) {
     await page.click('.chord.add'); await page.waitForSelector('#chordSheet');
     await page.click('#chordSheet button[aria-label="Delete this chord"]');
     r.check(await page.evaluate(() => window.__app.store.project.chords.length) === 8, `${name}: add then delete leaves 8 chords`);
+    await page.waitForTimeout(200);
+    // sound: pick an instrument and a drum pattern, mute, solo; melody: tap two notes, undo one
+    await page.click('#tabTracks');
+    await page.selectOption('select[aria-label="Chord instrument"]', 'kalimba'); await page.selectOption('select[aria-label="Drum pattern"]', 'basic'); await page.selectOption('select[aria-label="Bass pattern"]', 'root');
+    await page.waitForTimeout(500);
+    r.check(await page.evaluate(() => window.__app.engine.playing && window.__app.store.project.tracks.chords.instrument === 'kalimba'), `${name}: choosing an instrument starts the loop so it is heard`);
+    await page.selectOption('select[aria-label="Chord instrument"]', 'choir'); await page.waitForTimeout(300);
+    r.check(await page.evaluate(() => window.__app.engine.playing), `${name}: changing instrument while playing keeps playing`);
+    await page.click('button[aria-label="Mute Drums"]'); await page.click('button[aria-label="Solo Bass"]');
+    r.check(await page.evaluate(() => { const t = window.__app.store.project.tracks; return t.drums.mute && t.bass.solo && window.__app.engine.playing; }), `${name}: mute and solo apply without stopping`);
+    await page.click('#play');
+    await page.click('#tabMelody');
+    await page.click('.mel-cell >> nth=0'); await page.click('.mel-cell >> nth=70');
+    r.check(await page.evaluate(() => window.__app.store.project.tracks.melody.notes.length) === 2, `${name}: tapping the grid adds melody notes`);
+    await page.click('.mel-cell >> nth=0');
+    r.check(await page.evaluate(() => window.__app.store.project.tracks.melody.notes.length) === 1, `${name}: tapping a note removes it`);
+    r.check(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `${name}: the melody grid scrolls inside itself, not the page`);
     for (const tab of ['Tracks', 'Text', 'Chords']) { await page.click('#tab' + tab); r.check(await page.isVisible('#pane' + tab), `${name}: tab ${tab} opens`); }
     await page.click('#editBtn');
     r.check(await page.isHidden('#edit'), `${name}: Edit closes`);

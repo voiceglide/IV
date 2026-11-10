@@ -35,3 +35,10 @@ Choices made without asking, in order. Short on purpose.
 - Fifteen instruments added to the four existing ones: lo-fi keys, celesta, toy piano, vibraphone, kalimba, soft marimba, pocket console, music box, lullaby strings, dream bells, warm strings, tape choir, tape flute, singing glass, shimmer pad. All synthesized, no samples.
 - They were written directly rather than by one helper per instrument, to stay within the usage budget; each one is measured by the same automatic test (peak, level, clicks) and can be profiled note by note.
 - Nobody has listened to them: the tests prove they are clean and balanced, not that they are beautiful. Listening and retouching is a task for a person.
+
+## Steps 4 and 5
+- Tracks are fixed, not free-form: gliding voices (the master chord track), a chord instrument, bass, drums, melody. This keeps the app light and centred on the gliding voices.
+- Bass and drums are chosen as patterns that follow the chords, not drawn note by note.
+- The melody is tapped on a grid limited to the notes of the key (one octave, two positions), with the chord tones marked. One voice only. The grid is touch and mouse only; it has no keyboard equivalent yet.
+- WAV and video exports are exactly one seamless loop. MIDI export has one track per audible part.
+- Mixer changes (volume, pan, mute, solo) apply to the sound that is playing without restarting it; a new instrument or pattern restarts from the same position.

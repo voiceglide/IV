@@ -10,8 +10,8 @@ Updated after every step, and whenever work is pushed. A new session can resume 
 | 2 — public base | done | `step-2-public-base` |
 | 3 — instruments (new brief, see below) | done: 19 chord instruments + a bass voice, all audio tests pass | `step-3-instruments` |
 | 4 — architecture | done (modules, versioned format with migration, undo history, ROADMAP.md) | `step-4-architecture` |
-| 5 — light multitrack | **next** — engine, patterns, mixer, WAV/MIDI export exist; left: melody editor, polish, tests | `step-5-multitrack` |
-| 6 — product finish | to do (first-run guide, checklist in QA.md) | `step-6-finish` |
+| 5 — light multitrack | done: chord, bass, drums, melody tracks; mixer (volume, pan, mute, solo); WAV, MIDI, video, project export | `step-5-multitrack` |
+| 6 — product finish | **next** (first-run guide, checklist in QA.md) | `step-6-finish` |
 | 7 — QA as a user | to do | `step-7-qa` |
 | Final report | to do | `RAPPORT.md` |
 

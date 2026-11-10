@@ -6,6 +6,7 @@ import { toast, sheetOpen } from './sheet.js';
 import { initChords } from './chords.js';
 import { initTracks } from './tracks.js';
 import { initTextPane } from './textpane.js';
+import { initMelody } from './melody.js';
 import { initExports } from './exports.js';
 import { initMenu } from './menu.js';
 import { initProjects } from './projects.js';
@@ -70,7 +71,7 @@ function syncHead() {
 // ---------------------------------------------------------------- the app object handed to every UI module
 const app = {
   store, engine, renderer,
-  features: { melody: false },
+  features: { melody: true },
   song: () => song,
   stop, play, togglePlay,
   busy: () => busy,
@@ -143,7 +144,7 @@ store.subscribe(why => { rebuild(why); syncHead(); });
 store.open(exampleProject(0));
 const m = initMenu(); app.menu = m.menu; app.openHelp = m.openHelp;
 const chordsUi = initChords(app);
-initTracks(app); initTextPane(app); initExports(app);
+initTracks(app); initTextPane(app); initMelody(app); initExports(app);
 $('tabMelody').hidden = !app.features.melody;
 initProjects(app); initFeedback(app); initPwa(app);
 initWelcome(app);
