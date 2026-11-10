@@ -11,7 +11,7 @@ const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '
   '.woff2': 'font/woff2', '.png': 'image/png', '.svg': 'image/svg+xml', '.css': 'text/css', '.md': 'text/plain; charset=utf-8' };
 
 /** Serve a folder under a sub-path (like a project page), so relative URLs are really tested. */
-export async function serve(dir = join(ROOT, 'dist'), base = '/app/') {
+export async function serve(dir = join(ROOT, process.env.APP_DIST || 'dist'), base = '/app/') {
   const server = createServer(async (req, res) => {
     const url = new URL(req.url, 'http://x');
     if (!url.pathname.startsWith(base)) { res.writeHead(404); res.end('outside the app'); return; }

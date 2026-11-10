@@ -1,7 +1,7 @@
 // Build: bundle src/ into a static site in dist/. Everything the app needs is in dist/ (no CDN, no server);
 // all paths are relative, so it runs from a sub-folder as well as from the root of a domain.
 import { build } from 'esbuild';
-import { readFileSync, writeFileSync, mkdirSync, copyFileSync, rmSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync, copyFileSync, rmSync, readdirSync, existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
@@ -9,7 +9,8 @@ import { createRequire } from 'node:module';
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const require = createRequire(import.meta.url);
 const src = f => readFileSync(join(root, 'src', f), 'utf8');
-const dist = join(root, 'dist');
+// OUT_DIR lets tests build a variant (for example with FEEDBACK_URL set) without touching dist/
+const dist = join(root, process.env.OUT_DIR || 'dist');
 
 rmSync(dist, { recursive: true, force: true });
 mkdirSync(join(dist, 'fonts'), { recursive: true });
@@ -27,11 +28,15 @@ copyFileSync(require.resolve('@fontsource-variable/inter/files/inter-latin-wght-
 const fontCss = "@font-face{font-family:Inter;font-style:normal;font-weight:100 900;font-display:swap;src:url(fonts/inter-latin.woff2) format('woff2')}\n";
 const head = '<link rel="preload" href="fonts/inter-latin.woff2" as="font" type="font/woff2" crossorigin>';
 
+// each feature keeps its own stylesheet in src/styles/; they are appended in name order
+const stylesDir = join(root, 'src/styles');
+const extraCss = existsSync(stylesDir) ? readdirSync(stylesDir).filter(f => f.endsWith('.css')).sort().map(f => '\n' + src('styles/' + f)).join('') : '';
+
 const html = src('index.html')
   .replace(/%APP_NAME%/g, () => appName)
   .replace('<!--HEAD-->', () => head)
-  .replace('/*STYLE*/', () => fontCss + src('style.css'))
+  .replace('/*STYLE*/', () => fontCss + src('style.css') + extraCss)
   .replace('/*APP*/', () => js);
 writeFileSync(join(dist, 'index.html'), html);
 copyFileSync(join(root, 'THIRD-PARTY-NOTICES.md'), join(dist, 'THIRD-PARTY-NOTICES.md'));
-console.log(`dist/index.html · ${(html.length / 1024).toFixed(1)} KB`);
+console.log(`${process.env.OUT_DIR || 'dist'}/index.html · ${(html.length / 1024).toFixed(1)} KB`);
