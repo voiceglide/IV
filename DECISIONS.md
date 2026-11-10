@@ -32,3 +32,6 @@ Choices made without asking, in order. Short on purpose.
 ## Step 3 — instruments (brief changed by the owner)
 - The first instrument list is dropped. The new set extends the existing family: soft, warm, nostalgic, toy-like sounds.
 - The bass track still needs a voice: it gets one plain soft bass of its own, not offered as a chord instrument.
+- Fifteen instruments added to the four existing ones: lo-fi keys, celesta, toy piano, vibraphone, kalimba, soft marimba, pocket console, music box, lullaby strings, dream bells, warm strings, tape choir, tape flute, singing glass, shimmer pad. All synthesized, no samples.
+- They were written directly rather than by one helper per instrument, to stay within the usage budget; each one is measured by the same automatic test (peak, level, clicks) and can be profiled note by note.
+- Nobody has listened to them: the tests prove they are clean and balanced, not that they are beautiful. Listening and retouching is a task for a person.

@@ -3,7 +3,8 @@ import { encodeMidi } from './midi.js';
 import { chordEvents, bassEvents, drumEvents, melodyEvents } from './patterns.js';
 import { chordNotes } from './song.js';
 
-const PROGRAM = { softpiano: 0, piano: 0, rhodes: 4, organ: 16, guitar: 25, harp: 46, strumharp: 46, strings: 48, crystal: 98, arp: 0, bass: 33 };
+const PROGRAM = { softpiano: 0, arp: 0, lofikeys: 4, celesta: 8, toypiano: 8, musicbox: 10, vibraphone: 11, marimba: 12, kalimba: 108, chiparp: 80, crystal: 98, dreambells: 14,
+  strumharp: 46, lullaby: 46, stringmachine: 50, choir: 53, tapeflute: 73, glass: 92, shimmer: 88, bass: 33 };
 const DRUM_NOTE = { kick: 36, snare: 38, hat: 42 };
 const STYLES = { softpiano: 'tied', arp: 'arp', crystal: 'arpHigh', strumharp: 'sweep' };
 

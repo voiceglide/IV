@@ -8,8 +8,8 @@ Updated after every step, and whenever work is pushed. A new session can resume 
 | 0 — copy | done | `release` (first commit) |
 | 1 — audit and clean | done, audit = 0 hits | `release` |
 | 2 — public base | done | `step-2-public-base` |
-| 3 — instruments (new brief, see below) | **in progress** | `step-3-instruments` |
-| 4 — architecture | mostly done early, inside step 2 (see DECISIONS.md); left: ROADMAP.md, review | `step-4-architecture` |
+| 3 — instruments (new brief, see below) | done: 19 chord instruments + a bass voice, all audio tests pass | `step-3-instruments` |
+| 4 — architecture | **next** — mostly done early, inside step 2 (see DECISIONS.md); left: ROADMAP.md, review | `step-4-architecture` |
 | 5 — light multitrack | engine, patterns, mixer, WAV/MIDI export exist; left: melody editor, polish, tests | `step-5-multitrack` |
 | 6 — product finish | to do (first-run guide, checklist in QA.md) | `step-6-finish` |
 | 7 — QA as a user | to do | `step-7-qa` |

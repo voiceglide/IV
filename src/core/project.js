@@ -75,7 +75,7 @@ export function newProject(name = 'Untitled', chordText = 'C G Am F') {
       chords: { ...mix(0.8), instrument: 'none' },
       bass: { ...mix(0.8), instrument: 'bass', pattern: 'off' },
       drums: { ...mix(0.7), pattern: 'off' },
-      melody: { ...mix(0.8), instrument: 'rhodes', notes: [] },
+      melody: { ...mix(0.8), instrument: 'celesta', notes: [] },
     },
   };
 }
@@ -83,7 +83,7 @@ export function newProject(name = 'Untitled', chordText = 'C G Am F') {
 // Built-in examples: generic progressions, no real songs.
 export const EXAMPLES = [
   { name: 'Four chords (I–V–vi–IV)', chords: 'C G Am F C G Am F', tempo: 84, key: '0', hook: 'Watch the voices *glide*' },
-  { name: 'Jazz cadence (ii–V–I)', chords: 'Dm7 G7 Cmaj7:8 Dm7 G7 Cmaj7:8', tempo: 96, key: '0', hook: 'Two voices move, *two stay*', instrument: 'rhodes' },
+  { name: 'Jazz cadence (ii–V–I)', chords: 'Dm7 G7 Cmaj7:8 Dm7 G7 Cmaj7:8', tempo: 96, key: '0', hook: 'Two voices move, *two stay*', instrument: 'lofikeys' },
   { name: 'Minor start (vi–IV–I–V)', chords: 'Am F C G Am F C G', tempo: 90, key: '0', hook: 'Same chords, *new start*' },
 ];
 /** @returns {Project} */
@@ -157,7 +157,7 @@ export function normalizeProject(raw) {
       chords: { ...mixOf(t.chords, d.tracks.chords), instrument: str(t.chords && t.chords.instrument, 'none', 24) || 'none' },
       bass: { ...mixOf(t.bass, d.tracks.bass), instrument: 'bass', pattern: t.bass && t.bass.pattern in BASS_PATTERNS ? t.bass.pattern : 'off' },
       drums: { ...mixOf(t.drums, d.tracks.drums), pattern: t.drums && t.drums.pattern in DRUM_PATTERNS ? t.drums.pattern : 'off' },
-      melody: { ...mixOf(t.melody, d.tracks.melody), instrument: str(t.melody && t.melody.instrument, 'rhodes', 24) || 'rhodes', notes },
+      melody: { ...mixOf(t.melody, d.tracks.melody), instrument: str(t.melody && t.melody.instrument, 'celesta', 24) || 'celesta', notes },
     },
   };
 }

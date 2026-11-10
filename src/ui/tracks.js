@@ -19,7 +19,7 @@ export function initTracks(app) {
     drums: () => h('select', { 'aria-label': 'Drum pattern', onChange: e => { store.update(p => { p.tracks.drums.pattern = e.target.value; }, 'sound:drums'); app.previewSound(); } },
       Object.entries(DRUM_PATTERNS).map(([v, t]) => opt(v, t))),
     melody: () => h('select', { 'aria-label': 'Melody instrument', onChange: e => store.update(p => { p.tracks.melody.instrument = e.target.value; }, 'sound:melody') },
-      CHORD_INSTRUMENTS.filter(i => i.style === 'tied' || i.style === 'block').map(i => opt(i.id, i.name))),
+      CHORD_INSTRUMENTS.map(i => opt(i.id, i.name))),
   };
 
   for (const id of TRACK_IDS) {
