@@ -7,8 +7,8 @@ Updated after every step, and whenever work is pushed. A new session can resume 
 |---|---|---|
 | 0 — copy | done | `release` (first commit) |
 | 1 — audit and clean | done, audit = 0 hits | `release` |
-| 2 — public base | **in progress** | `step-2-public-base` |
-| 3 — instruments (new brief, see below) | to do | `step-3-instruments` |
+| 2 — public base | done | `step-2-public-base` |
+| 3 — instruments (new brief, see below) | **in progress** | `step-3-instruments` |
 | 4 — architecture | mostly done early, inside step 2 (see DECISIONS.md); left: ROADMAP.md, review | `step-4-architecture` |
 | 5 — light multitrack | engine, patterns, mixer, WAV/MIDI export exist; left: melody editor, polish, tests | `step-5-multitrack` |
 | 6 — product finish | to do (first-run guide, checklist in QA.md) | `step-6-finish` |
@@ -21,8 +21,8 @@ Updated after every step, and whenever work is pushed. A new session can resume 
 - [x] `APP_NAME` single constant (`src/config.js`), README, LICENSE, Pages workflow
 - [x] Feedback button (hidden without `FEEDBACK_URL`)
 - [x] PWA: manifest, icons, service worker (offline test passes; real-device install not testable here)
-- [ ] Local projects (IndexedDB, "My projects", import/export) — being built: `src/storage/projects.js`, `src/ui/projects.js`
-- [ ] Verify the three above (`npm run check`), commit, open PR to `release`, merge by fast-forward
+- [x] Local projects (IndexedDB, "My projects", import/export)
+- [x] Verified with `npm run check`; PR to `release`, merged by fast-forward
 
 ## Step 3 — new brief (changed by the owner)
 The first list (electric piano, acoustic piano, strings, organ, guitar, bass, harp) is **cancelled**.
