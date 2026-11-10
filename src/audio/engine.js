@@ -153,7 +153,15 @@ export function createEngine() {
     get context() { return ac; },
     get playing() { return playing; },
     /** Call from a tap or key press: creates the context and resumes it (browsers start it suspended). */
-    unlock() { const a = ensure(); if (a.state !== 'running') a.resume().catch(() => {}); return a; },
+    unlock() {
+      const a = ensure();
+      // iOS: mark the page as media playback, so the ring/silent switch does not mute it
+      try { const s = /** @type {any} */(navigator).audioSession; if (s && s.type !== 'playback') s.type = 'playback'; } catch (e) { /* not supported */ }
+      if (a.state !== 'running') a.resume().catch(() => {});
+      return a;
+    },
+    /** True when the browser has paused the context (phone call, another app, background). The next tap resumes it. */
+    get interrupted() { return !!ac && ac.state !== 'running'; },
     /** Start playing `song` from song time `from`. Must follow a user gesture at least once. */
     play(song, from) {
       const a = this.unlock(); stop();
@@ -172,6 +180,15 @@ export function createEngine() {
         chans[id].vol.gain.setTargetAtTime(trackGain(tracks, id), ac.currentTime, 0.03);
         const p = chans[id].pan; if (p) p.pan.setTargetAtTime(tracks[id].pan, ac.currentTime, 0.03);
       }
+    },
+    /** Play a few notes right now with an instrument (the chord picker uses it so choices can be heard). */
+    audition(midis, instrumentId) {
+      if (playing) return;
+      const a = this.unlock(), inst = INSTRUMENTS[instrumentId] || INSTRUMENTS.softpiano, m = /** @type {any} */(master);
+      const g = a.createGain(); g.gain.value = inst.level; g.connect(m.bus);
+      const life = { start: a.currentTime, end: a.currentTime + 8 }, shared = inst.setup ? inst.setup(a, g, life) : undefined;
+      midis.forEach((midi, k) => inst.note(a, g, { midi, freq: hz(midi), time: a.currentTime + 0.04 + k * 0.012, duration: 1.1, velocity: 0.9 }, shared));
+      setTimeout(() => { try { g.disconnect(); } catch (e) { /* already gone */ } }, 8000);
     },
     /** A MediaStream of the master output, for real-time recording. Call release() when done. */
     tap() {

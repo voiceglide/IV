@@ -16,6 +16,7 @@ import { createEngine } from '../audio/engine.js';
 import { createRenderer } from '../render/draw.js';
 import { buildSong, idxAt } from '../core/song.js';
 import { exampleProject } from '../core/project.js';
+import { blockVoicing } from '../core/theory.js';
 import { APP_NAME } from '../config.js';
 import * as lab from './lab.js';
 
@@ -77,7 +78,11 @@ const app = {
   setBusy(on) { busy = on; if (on) stop(); dirty = true; },
   redraw() { dirty = true; },
   /** Play one chord right now, so a choice in the chord picker can be heard. */
-  audition(chord) { void chord; },
+  audition(chord) {
+    if (busy || engine.playing) return;
+    const v = blockVoicing(chord), id = store.project.tracks.chords.instrument;
+    try { engine.audition([v.bass + 12, ...v.upper].sort((a, b) => a - b), id === 'none' ? 'softpiano' : id); } catch (e) { /* no sound available: the picker still works */ }
+  },
   /** After a sound choice: start the loop if it is not playing, so the change is heard. */
   previewSound() { if (!engine.playing && song && !busy) play(song.vs); },
   /** @type {{add:(item:{label:string, icon?:string, run:()=>void, order?:number})=>void}} */
