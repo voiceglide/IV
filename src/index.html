@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#f3ecdf">
+<meta name="description" content="Write a chord progression, hear the voices glide from chord to chord, export a video, audio or MIDI.">
+<title>%APP_NAME%</title>
+<!--HEAD-->
+<style>
+/*STYLE*/</style>
+</head>
+<body>
+<div class="app" id="app">
+
+  <header class="bar">
+    <button id="projBtn" class="pick" type="button" aria-haspopup="dialog">
+      <svg class="logo" width="34" height="34" viewBox="0 0 132 132" aria-hidden="true"><circle cx="66" cy="66" r="66" fill="#2b2520"/><path d="M14 40 C 44 40, 52 64, 92 64" stroke="#8f7fd0" stroke-width="9" fill="none" stroke-linecap="round"/><path d="M14 56 C 44 56, 52 64, 92 64" stroke="#6f9ad6" stroke-width="9" fill="none" stroke-linecap="round"/><path d="M14 76 C 44 76, 52 64, 92 64" stroke="#63b38c" stroke-width="9" fill="none" stroke-linecap="round"/><path d="M14 92 C 44 92, 52 64, 92 64" stroke="#dcaa5c" stroke-width="9" fill="none" stroke-linecap="round"/><circle cx="96" cy="64" r="15" fill="#e0557c"/></svg>
+      <span class="pt"><b id="projName">Untitled</b><small id="projSub">My projects</small></span>
+    </button>
+    <button id="undoBtn" class="icon ghost" type="button" aria-label="Undo" disabled></button>
+    <button id="redoBtn" class="icon ghost" type="button" aria-label="Redo" disabled></button>
+    <button id="menuBtn" class="icon ghost" type="button" aria-label="Help and more" aria-haspopup="dialog"></button>
+  </header>
+
+  <section class="stage" aria-label="Preview">
+    <canvas id="cv" width="1080" height="1920" role="img" aria-label="Preview of the video: chord name, gliding voices and keyboard"></canvas>
+  </section>
+  <div class="transport">
+    <button id="play" class="play" type="button"><span class="ico"></span><span class="lbl">Play</span></button>
+    <input type="range" id="scrub" min="0" max="20" step="0.01" value="0" aria-label="Position in the loop">
+  </div>
+
+  <section id="edit" class="editp" hidden aria-label="Edit">
+    <div class="tabs" role="tablist" aria-label="What to edit">
+      <button role="tab" id="tabChords" aria-controls="paneChords" aria-selected="true" type="button">Chords</button>
+      <button role="tab" id="tabTracks" aria-controls="paneTracks" aria-selected="false" type="button" tabindex="-1">Sound</button>
+      <button role="tab" id="tabMelody" aria-controls="paneMelody" aria-selected="false" type="button" tabindex="-1">Melody</button>
+      <button role="tab" id="tabText" aria-controls="paneText" aria-selected="false" type="button" tabindex="-1">Text</button>
+    </div>
+    <div class="pane" id="paneChords" role="tabpanel" aria-labelledby="tabChords"></div>
+    <div class="pane" id="paneTracks" role="tabpanel" aria-labelledby="tabTracks" hidden></div>
+    <div class="pane" id="paneMelody" role="tabpanel" aria-labelledby="tabMelody" hidden></div>
+    <div class="pane" id="paneText" role="tabpanel" aria-labelledby="tabText" hidden></div>
+  </section>
+
+  <footer class="actions">
+    <div class="status err" id="songErr" role="alert"></div>
+    <div class="btns">
+      <button id="editBtn" class="big ghost" type="button" aria-expanded="false" aria-controls="edit"><span class="ico"></span>Edit</button>
+      <button id="exportBtn" class="big pink" type="button" aria-haspopup="dialog">Export</button>
+    </div>
+  </footer>
+</div>
+<noscript><p style="padding:24px;font-family:sans-serif">This app needs JavaScript to run.</p></noscript>
+<script>
+/*APP*/</script>
+</body>
+</html>
