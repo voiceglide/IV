@@ -11,9 +11,9 @@ Updated after every step, and whenever work is pushed. A new session can resume 
 | 3 — instruments (new brief, see below) | done: 19 chord instruments + a bass voice, all audio tests pass | `step-3-instruments` |
 | 4 — architecture | done (modules, versioned format with migration, undo history, ROADMAP.md) | `step-4-architecture` |
 | 5 — light multitrack | done: chord, bass, drums, melody tracks; mixer (volume, pan, mute, solo); WAV, MIDI, video, project export | `step-5-multitrack` |
-| 6 — product finish | **next** (first-run guide, checklist in QA.md) | `step-6-finish` |
-| 7 — QA as a user | to do | `step-7-qa` |
-| Final report | to do | `RAPPORT.md` |
+| 6 — product finish | done (first-run guide, checklist in QA.md) | `step-6-finish` |
+| 7 — QA as a user | done in headless browsers; real-device checks are left to a person (QA.md) | `step-6-finish` |
+| Final report | done | `RAPPORT.md` |
 
 ## Step 2 detail
 - [x] Code split into modules, esbuild build, lint + types + unit tests + browser tests (`npm run check`)
@@ -45,7 +45,7 @@ checked with `node scripts/profile-instrument.mjs <id>`. The bass track keeps a 
 5. Quality bar for everything: static page with no outside request; offline and installable; work never lost;
    usable at 375 px with 44 px targets; undo/redo; plain-English errors; accessible; nothing half-finished shown;
    no personal or platform names anywhere (code, metadata, history); no third-party samples or real songs;
-   the product name stays the placeholder in `APP_NAME` (never containing "swan" or "glide").
+   the product name stays the placeholder in `APP_NAME` until the owner picks the final one.
 
 ## Commands
 `npm run check` (lint, types, build, unit tests, browser tests) · `npm run build` → `dist/` ·
