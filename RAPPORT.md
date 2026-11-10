@@ -37,9 +37,9 @@ le navigateur n'encode pas l'AAC ; grille de mélodie limitée à la tonalité e
 https://voiceglide.github.io/IV/
 
 ## À faire à la main
-1. Remplacer `main` par `release` : soit Settings → Branches → branche par défaut = `release` puis supprimer `main`,
-   soit `git push --force origin release:main` depuis ta machine. Pour effacer aussi la réserve (2), repartir d'un
-   commit unique : `git checkout --orphan clean release && git commit -m "Initial commit" && git push --force origin clean:main`.
+1. Remplacer `main`, sans ordinateur, depuis le site GitHub (navigateur du téléphone) : la branche `clean` contient
+   l'app finale en un seul commit. Settings → General → Default branch → choisir `clean`. Puis page Branches :
+   supprimer `main`, `release` et les branches `step-…`, et renommer `clean` en `main`.
 2. Settings → Emails → cocher « Keep my email addresses private » sur le compte, avant tout commit depuis le site.
 3. Activer Pages : Settings → Pages → Source : GitHub Actions.
 4. Choisir le nom et remplacer `APP_NAME` dans `src/config.js`.
