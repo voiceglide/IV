@@ -19,7 +19,7 @@ Updated after every step, and whenever work is pushed. A new session can resume 
 - [x] Code split into modules, esbuild build, lint + types + unit tests + browser tests (`npm run check`)
 - [x] Generic vertical video export (platform presets removed)
 - [x] `APP_NAME` single constant (`src/config.js`), README, LICENSE, Pages workflow
-- [ ] Feedback button (hidden without `FEEDBACK_URL`) — being built: `src/ui/feedback.js`, `src/core/feedback.js`, tests
+- [x] Feedback button (hidden without `FEEDBACK_URL`)
 - [ ] PWA: manifest, icons, service worker — being built: `src/sw.js`, `src/manifest.webmanifest`, `src/icons/`, `src/ui/pwa.js`, `scripts/icons.mjs`, build changes
 - [ ] Local projects (IndexedDB, "My projects", import/export) — being built: `src/storage/projects.js`, `src/ui/projects.js`
 - [ ] Verify the three above (`npm run check`), commit, open PR to `release`, merge by fast-forward
