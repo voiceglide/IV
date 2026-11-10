@@ -1,7 +1,7 @@
 // Build-time configuration.
 
 /** The product name. One place only: change it here. */
-export const APP_NAME = 'NOM';
+export const APP_NAME = 'IV';
 
 /**
  * Where anonymous, opt-in feedback is POSTed. Set at build time with the FEEDBACK_URL environment variable.
