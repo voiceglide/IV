@@ -1,0 +1,18 @@
+/* My projects sheet */
+#projectsSheet .pbody>section{display:grid;gap:0}
+#projectsSheet .btns>.big{flex:1 1 140px;white-space:nowrap}
+.pj-examples{display:grid;gap:6px}
+.pj-example{width:100%;text-align:left;justify-content:flex-start;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600}
+.pj-list{gap:8px}
+.pj-item{display:grid;gap:6px;min-width:0}
+.pj-row{display:grid;grid-template-columns:minmax(0,1fr) var(--tap);gap:6px;align-items:stretch}
+.pj-main{min-height:60px}
+.pj-main .pj-text{min-width:0}
+.pj-main b{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pj-main small{overflow-wrap:anywhere}
+.pj-row.is-open .pj-main{border-color:var(--ink)}
+.pj-tag{font-size:12px;font-weight:800;letter-spacing:.04em;background:var(--ink);color:#f6efe3;border-radius:8px;padding:3px 8px}
+.pj-more{min-height:60px;height:auto;border:1.5px solid var(--line);color:var(--ink)}
+.pj-acts{display:grid;grid-template-columns:1fr 1fr;gap:6px;padding:8px;background:var(--soft);border-radius:14px}
+.pj-acts[hidden]{display:none}
+.pj-acts button{width:100%;padding:0 8px}
