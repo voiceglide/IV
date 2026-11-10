@@ -52,5 +52,7 @@ export async function openApp(browser, url, r, opts = {}) {
   page.on('request', q => { if (!q.url().startsWith(new URL(url).origin) && !/^(data|blob):/.test(q.url())) r.failures.push('third-party request: ' + q.url()); });
   await page.goto(url);
   await page.waitForFunction('window.__app && !!window.__app.song()');
+  // the first-run guide appears once per browser profile; tests that are not about it dismiss it
+  if (!opts.keepWelcome) { const w = await page.waitForSelector('#welcomeSheet', { timeout: 1500 }).catch(() => null); if (w) await page.click('#welcomeSheet button:has-text("Skip")'); }
   return { context, page };
 }

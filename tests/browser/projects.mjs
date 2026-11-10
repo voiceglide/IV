@@ -17,9 +17,11 @@ export async function run(browser, url, r) {
   r.check(fit, 'the sheet fits a 390 px screen');
   await page.keyboard.press('Escape');
 
+  r.check(await page.locator('#welcomeSheet').count() === 0, 'the first-run guide can be skipped');
   // autosave and restore
   await page.evaluate(() => window.__app.store.update(p => { p.tempo = 123; }, 'tempo'));
   await page.waitForTimeout(900); await page.reload(); await page.waitForFunction(() => window.__app && window.__app.store.project.tempo === 123, null, { timeout: 5000 }).catch(() => {});
+  r.check(await page.waitForSelector('#welcomeSheet', { timeout: 1200 }).then(() => false, () => true), 'the first-run guide is not shown a second time');
   const back = await P();
   r.check(back.tempo === 123 && back.id === first.id, 'an edit survives a reload', JSON.stringify(back));
 
