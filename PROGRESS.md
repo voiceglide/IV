@@ -20,7 +20,7 @@ Updated after every step, and whenever work is pushed. A new session can resume 
 - [x] Generic vertical video export (platform presets removed)
 - [x] `APP_NAME` single constant (`src/config.js`), README, LICENSE, Pages workflow
 - [x] Feedback button (hidden without `FEEDBACK_URL`)
-- [ ] PWA: manifest, icons, service worker — being built: `src/sw.js`, `src/manifest.webmanifest`, `src/icons/`, `src/ui/pwa.js`, `scripts/icons.mjs`, build changes
+- [x] PWA: manifest, icons, service worker (offline test passes; real-device install not testable here)
 - [ ] Local projects (IndexedDB, "My projects", import/export) — being built: `src/storage/projects.js`, `src/ui/projects.js`
 - [ ] Verify the three above (`npm run check`), commit, open PR to `release`, merge by fast-forward
 
