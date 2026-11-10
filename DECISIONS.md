@@ -16,3 +16,19 @@ Choices made without asking, in order. Short on purpose.
 - Removed with them: the song library, the publishing calendar, captions and hashtags, the posting checklist, the platform safe-area overlay, the host-specific download path.
 - Kept: three generic examples (I–V–vi–IV, ii–V–I, vi–IV–I–V), no song titles.
 - No images were copied, so there was no image metadata to strip at this step.
+
+## Step 2 — public base
+- The split into modules (planned as step 4) was done first, so that every later feature lands in its own file. Step 4 keeps the review and the roadmap.
+- Build: esbuild bundles the app into one page; the typeface (Inter, SIL Open Font License, redistributable) and the MP4 muxer (MIT) ship inside the build. No outside request at run time. Their notices are in THIRD-PARTY-NOTICES.md.
+- Musical flat and sharp signs are not in the Latin subset of the typeface; they fall back to the system font, as before.
+- Project format: version 2 (`chord-project`). Version 1 (flat fields, sound "modes") and unversioned files are migrated on load.
+- The video keeps its seamless-loop design: one cycle taken from the middle of three. At rest the preview shows the first chord.
+- Deleting a chord does not ask for confirmation: it shows "removed · Undo" instead, because it is undoable. Deleting a project (not undoable) does ask.
+- Leaving the page (tab switch, phone lock) stops playback instead of trying to keep it alive in the background.
+- The strummed electronic harp replaces the earlier trademarked instrument name.
+- Browser tests use the Playwright already installed on the machine and are skipped where there is none; the Pages workflow runs lint, types and unit tests only.
+- The Pages workflow deploys from `main` and from `release`. If the Pages environment only allows the default branch, the `release` run fails harmlessly until `main` is replaced.
+
+## Step 3 — instruments (brief changed by the owner)
+- The first instrument list is dropped. The new set extends the existing family: soft, warm, nostalgic, toy-like sounds.
+- The bass track still needs a voice: it gets one plain soft bass of its own, not offered as a chord instrument.
