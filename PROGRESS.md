@@ -14,6 +14,7 @@ Updated after every step, and whenever work is pushed. A new session can resume 
 | 6 — product finish | done (first-run guide, checklist in QA.md) | `step-6-finish` |
 | 7 — QA as a user | done in headless browsers; real-device checks are left to a person (QA.md) | `step-6-finish` |
 | Final report | done | `RAPPORT.md` |
+| Plan 2 — glide sounds and ease of use | **in progress**: see PLAN-2.md, "Done so far" | `plan2-glides` |
 
 ## Step 2 detail
 - [x] Code split into modules, esbuild build, lint + types + unit tests + browser tests (`npm run check`)

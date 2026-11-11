@@ -1,15 +1,30 @@
 /* Melody grid */
-.mel-bar{display:flex;gap:8px;align-items:center}
-.mel-bar select{flex:1;min-width:0;min-height:44px}
-.mel-bar button{flex:none}
-.mel-scroll{overflow:auto;overscroll-behavior:contain;border:1.5px solid var(--line);border-radius:12px;background:var(--field);max-width:100%}
-.mel-grid{display:grid;grid-auto-rows:44px;width:max-content}
+.mel-bar{display:flex;gap:6px;align-items:center;min-height:44px}
+.mel-bar .mel-len{flex:1;min-width:0;font-size:13.5px;font-weight:700;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mel-bar button{flex:none;min-width:44px;padding:0 12px;display:inline-flex;align-items:center;justify-content:center;font-size:17px}
+.mel-bar button[aria-pressed="true"]{background:var(--ink);color:#f6efe3}
+.mel-bar button.flip svg{transform:rotate(180deg)}
+.mel-scroll{overflow:auto;overscroll-behavior:contain;border:1.5px solid var(--line);border-radius:12px;background:var(--field);max-width:100%;min-height:180px;flex:1}
+.mel-grid{display:grid;grid-auto-rows:44px;width:max-content;position:relative}
 .mel-corner,.mel-name{position:sticky;left:0;z-index:2;background:var(--card);border-right:1.5px solid var(--line)}
-.mel-name{display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:800;color:var(--muted)}
+.mel-corner,.mel-head{position:sticky;top:0;z-index:3}
+.mel-corner{z-index:4}
+.mel-name{display:flex;align-items:center;justify-content:center;font-size:12.5px;font-weight:800;color:var(--muted)}
+.mel-name.tonic{color:var(--ink);background:#efe5d4}
 .mel-head{display:flex;align-items:center;padding-left:6px;font-size:13px;font-weight:800;white-space:nowrap;overflow:visible;border-bottom:1.5px solid var(--line);background:var(--card)}
+.mel-head.new{border-left:2px solid var(--ink)}
 .mel-cell{border-right:1px solid #efe6d6;border-bottom:1px solid #efe6d6;position:relative;cursor:pointer}
+.mel-cell.tonic{background:#f8f1e4}
 .mel-cell.beat,.mel-head.beat{border-left:1px solid var(--line)}
-.mel-cell.tone::after{content:"";position:absolute;left:50%;top:50%;width:6px;height:6px;margin:-3px;border-radius:50%;background:#d9cdb8}
-.mel-cell.on{background:var(--pink)}
+.mel-cell.tone::after{content:"";position:absolute;left:50%;top:50%;width:6px;height:6px;margin:-3px;border-radius:50%;background:#d2c4ab}
+.mel-cell.on{background:var(--pink);border-right-color:transparent}
 .mel-cell.on::after{display:none}
-.mel-cell.on.start{border-radius:8px 0 0 8px;box-shadow:inset 3px 0 0 #7d1f3a}
+.mel-cell.on.start{border-radius:9px 0 0 9px;box-shadow:inset 3px 0 0 #7d1f3a}
+.mel-cell.on.end{border-radius:0 9px 9px 0}
+.mel-cell.on.start.end{border-radius:9px}
+.mel-cell.on.sel{background:var(--ink)}
+.mel-playhead{position:absolute;top:0;bottom:0;left:0;width:2px;background:var(--ink);opacity:.55;pointer-events:none;z-index:1}
+/* writing a melody needs room: the panel grows while this tab is open */
+.editp.tall{height:68vh;height:68dvh}
+#paneMelody{display:flex;flex-direction:column;gap:8px}
+#paneMelody[hidden]{display:none!important}

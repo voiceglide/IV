@@ -4,6 +4,16 @@ Why: the first version put new instruments *next to* the gliding voices (struck 
 What was wanted is the opposite: **the gliding voices themselves should have different sounds**. And the app
 works, but using it is clumsy. This plan fixes both. Same rules as before (see PROGRESS.md, "How to resume").
 
+## Done so far (first pass, measured by tests, not yet listened to by a person)
+- Twelve glide sounds for the chord voices (warm pad, strings, solo strings, choir ooh/aah, whistle, flutes, soft organ,
+  glass, analog lead, old tape, soft brass), chosen as tiles at the top of the Sound tab. `src/audio/glides.js`.
+- Tap a chord: the preview jumps to it and it is heard in the current glide sound; tap again (or "Edit") to change it.
+- Playback keeps its place when a chord, the tempo or a sound changes: the loop no longer jumps back to its start.
+- Melody: two octaves, optional "All notes", tap to add, tap a note to select it, then shorter / longer / lower /
+  higher / delete; play head line; notes can be added while the loop plays; taller panel on that tab.
+Still to do: everything below that is not listed above — in particular glide expression (A3), per-voice sounds (A4),
+the listening page (A7), the always-visible chord strip and inline picker (B1, B2).
+
 ## Part A — instruments that glide (priority)
 1. **A second instrument interface: the glide voice.** A continuous sound whose pitch is driven by the engine
    (one frequency curve per voice), instead of separate notes. Each glide sound is one file in

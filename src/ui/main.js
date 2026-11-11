@@ -116,6 +116,7 @@ function selectTab(name) {
     const on = t === name, tab = $('tab' + t);
     tab.setAttribute('aria-selected', String(on)); tab.tabIndex = on ? 0 : -1; $('pane' + t).hidden = !on;
   }
+  $('edit').classList.toggle('tall', name === 'Melody');
 }
 function setEditOpen(open, tab) {
   $('edit').hidden = !open; $('editBtn').setAttribute('aria-expanded', String(open));
@@ -161,7 +162,7 @@ store.subscribe(why => { rebuild(why); syncHead(); });
 store.open(exampleProject(0));
 const m = initMenu(); app.menu = m.menu; app.openHelp = m.openHelp;
 const chordsUi = initChords(app);
-initTracks(app); initTextPane(app); initMelody(app); initExports(app);
+initTracks(app); initTextPane(app); const melodyUi = initMelody(app); initExports(app);
 $('tabMelody').hidden = !app.features.melody;
 initProjects(app); initFeedback(app); initPwa(app);
 initWelcome(app);
@@ -182,9 +183,11 @@ function frame() {
       if (t > song.ve) { play(song.vs); t = song.vs; }
       renderer.draw(song, t); scrub.value = String(t);
       chordsUi.highlight(idxAt(song, t) % song.n);
+      melodyUi.playhead((t - song.vs - (song.starts[song.n] - song.vs)) / song.spb);
     } else if (dirty) {
       dirty = false; renderer.draw(song, +scrub.value);
       chordsUi.highlight(-1);
+      melodyUi.playhead(-1);
     }
   }
   requestAnimationFrame(frame);

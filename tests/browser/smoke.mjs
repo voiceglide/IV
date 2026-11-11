@@ -70,7 +70,13 @@ export async function run(browser, url, r) {
     await page.click('.mel-cell >> nth=0'); await page.click('.mel-cell >> nth=70');
     r.check(await page.evaluate(() => window.__app.store.project.tracks.melody.notes.length) === 2, `${name}: tapping the grid adds melody notes`);
     await page.click('.mel-cell >> nth=0');
-    r.check(await page.evaluate(() => window.__app.store.project.tracks.melody.notes.length) === 1, `${name}: tapping a note removes it`);
+    r.check(await page.evaluate(() => window.__app.store.project.tracks.melody.notes.length) === 2 && await page.isVisible('button[aria-label="Longer"]'), `${name}: tapping a note selects it`);
+    await page.click('button[aria-label="Longer"]'); await page.click('button[aria-label="Lower"]');
+    r.check(await page.evaluate(() => { const n = window.__app.store.project.tracks.melody.notes[0]; return n.d === 1.5 && n.t === 0; }), `${name}: a selected note can be lengthened and moved`);
+    await page.click('button[aria-label="Delete this note"]');
+    r.check(await page.evaluate(() => window.__app.store.project.tracks.melody.notes.length) === 1, `${name}: a selected note can be deleted`);
+    const mel = await page.evaluate(() => { const b = [...document.querySelectorAll('#paneMelody button')].filter(x => x.offsetParent).map(x => x.getBoundingClientRect()); return b.every(q => q.height >= 43.5 && q.width >= 43.5 && q.right <= innerWidth + 0.5); });
+    r.check(mel, `${name}: melody buttons are at least 44 px and on screen`);
     r.check(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `${name}: the melody grid scrolls inside itself, not the page`);
     for (const tab of ['Tracks', 'Text', 'Chords']) { await page.click('#tab' + tab); r.check(await page.isVisible('#pane' + tab), `${name}: tab ${tab} opens`); }
     await page.click('#editBtn');
