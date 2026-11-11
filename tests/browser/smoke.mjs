@@ -31,6 +31,8 @@ export async function run(browser, url, r) {
     r.check(await page.isVisible('#paneChords'), `${name}: Edit opens on the chords`);
     const small = await page.evaluate(() => Array.from(document.querySelectorAll('#edit button, #edit select, #edit input')).filter(e => e.offsetParent && (e.getBoundingClientRect().height < 43.5 || (e.tagName === 'BUTTON' && e.getBoundingClientRect().width < 43.5))).map(e => e.id || e.textContent || e.tagName));
     r.check(small.length === 0, `${name}: every control in Edit is at least 44 px`, small.join(','));
+    await page.click('.chord >> nth=1'); await page.waitForTimeout(150);
+    r.check(await page.locator('#chordSheet').count() === 0 && await page.evaluate(() => { const a = window.__app, s = a.song(); return Math.abs(+document.getElementById('scrub').value - s.starts[s.n + 1]) < 0.02; }), `${name}: one tap on a chord shows it in the preview (and plays it)`);
     await page.click('.chord >> nth=1'); await page.waitForSelector('#chordSheet');
     await page.click('#chordSheet .opt:has-text("minor")');
     r.check(await page.evaluate(() => window.__app.store.project.chords[1].sym) === 'Gm', `${name}: tapping a type changes the chord`);
@@ -47,6 +49,15 @@ export async function run(browser, url, r) {
     await page.waitForTimeout(200);
     // sound: pick an instrument and a drum pattern, mute, solo; melody: tap two notes, undo one
     await page.click('#tabTracks');
+    await page.click('.tile[data-glide="strings"]'); await page.waitForTimeout(400);
+    r.check(await page.evaluate(() => window.__app.engine.playing && window.__app.store.project.tracks.voices.sound === 'strings'), `${name}: choosing a glide sound plays it`);
+    const before = await page.evaluate(() => window.__app.engine.time());
+    await page.waitForTimeout(1500); await page.click('.tile[data-glide="ooh"]'); await page.waitForTimeout(300);
+    const after = await page.evaluate(() => window.__app.engine.time());
+    r.check(after > before + 1, `${name}: changing the sound does not send the loop back to its start`, `${before.toFixed(2)} → ${after.toFixed(2)}`);
+    await page.evaluate(() => window.__app.store.update(p => { p.chords[2].sym = 'A'; }, ''));
+    await page.waitForTimeout(300);
+    r.check(await page.evaluate(() => window.__app.engine.time()) > after, `${name}: changing a chord while playing keeps the play head`);
     await page.selectOption('select[aria-label="Chord instrument"]', 'kalimba'); await page.selectOption('select[aria-label="Drum pattern"]', 'basic'); await page.selectOption('select[aria-label="Bass pattern"]', 'root');
     await page.waitForTimeout(500);
     r.check(await page.evaluate(() => window.__app.engine.playing && window.__app.store.project.tracks.chords.instrument === 'kalimba'), `${name}: choosing an instrument starts the loop so it is heard`);

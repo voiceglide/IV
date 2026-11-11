@@ -21,8 +21,10 @@ export function initChords(app) {
   const text = h('textarea', { id: 'chordText', spellcheck: false, autocapitalize: 'off', autocomplete: 'off', 'aria-label': 'Chords as text', 'aria-describedby': 'chordTextErr' });
   const textErr = h('div', { class: 'err', id: 'chordTextErr', role: 'alert' });
   const step = d => () => setTempo(store.project.tempo + d);
+  const editBtn = h('button', { class: 'small ghost editchord', type: 'button', hidden: true, html: ICON.edit, onClick: () => { if (selected >= 0) openChord(selected); } }, ' Edit');
   pane.append(
-    chips,
+    h('p', { class: 'hint', text: 'Tap a chord to hear it. Tap it again to change it.' }),
+    chips, editBtn,
     h('div', { class: 'row3' },
       h('div', null, h('label', { for: 'tempo', text: 'Tempo (BPM)' }), h('div', { class: 'stepper' },
         h('button', { class: 'ghost', type: 'button', 'aria-label': 'Slower', text: '−', onClick: step(-2) }), tempo,
@@ -101,20 +103,27 @@ export function initChords(app) {
     draw();
   }
 
-  let current = -1;
+  let current = -1, selected = -1;
+  function select(i) {
+    selected = i;
+    chips.querySelectorAll('.chord:not(.add)').forEach((el, k) => el.setAttribute('aria-pressed', String(k === i)));
+    editBtn.hidden = i < 0; if (i >= 0) editBtn.lastChild.textContent = ` Edit ${pretty(store.project.chords[i].sym)}`;
+  }
   function render() {
+    if (selected >= store.project.chords.length) selected = -1;
     const p = store.project;
     chips.replaceChildren();
     p.chords.forEach((c, i) => {
       if (c.section) chips.append(h('span', { class: 'sec', text: c.section }));
-      chips.append(h('button', { class: 'chord', type: 'button', role: 'listitem', 'aria-label': `Chord ${i + 1}: ${pretty(c.sym)}${c.beats ? `, ${c.beats} beats` : ''}. Edit`,
-        onClick: () => openChord(i) }, h('b', { text: pretty(c.sym) }), c.beats ? h('small', { text: `${c.beats}` }) : null));
+      chips.append(h('button', { class: 'chord', type: 'button', role: 'listitem', 'aria-label': `Chord ${i + 1}: ${pretty(c.sym)}${c.beats ? `, ${c.beats} beats` : ''}. Tap to hear, tap again to edit`,
+        'aria-pressed': String(i === selected), onClick: () => { if (i === selected) { openChord(i); return; } select(i); app.goToChord(i); } },
+        h('b', { text: pretty(c.sym) }), c.beats ? h('small', { text: `${c.beats}` }) : null));
     });
     chips.append(h('button', { class: 'chord add', type: 'button', 'aria-label': 'Add a chord', html: ICON.plus, onClick: () => {
       if (store.project.chords.length >= 512) { toast('That is the longest progression this app handles (512 chords).', { error: true }); return; }
       const last = store.project.chords[store.project.chords.length - 1]; let at = 0;
       store.update(pr => { at = insertChord(pr, pr.chords.length - 1, last ? last.sym : 'C'); }, '');
-      openChord(at);
+      selected = at; select(at); openChord(at);
     } }, h('span', { text: 'Add' })));
     if (!p.chords.length) chips.prepend(h('p', { class: 'empty', text: 'No chords yet. Tap Add to start your progression.' }));
     if (document.activeElement !== tempo) tempo.value = String(p.tempo);
@@ -122,7 +131,7 @@ export function initChords(app) {
     if (beats.value !== String(p.beatsPerChord)) { beats.append(opt(p.beatsPerChord, String(p.beatsPerChord), true)); }
     key.value = p.key;
     if (!ownText && document.activeElement !== text) { text.value = chordsToText(p.chords); textErr.textContent = ''; }
-    current = -1;
+    current = -1; select(selected);
   }
   store.subscribe(why => { if (!why.tag.startsWith('mix:') && !why.tag.startsWith('text:')) render(); });
   render();

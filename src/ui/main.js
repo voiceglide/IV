@@ -46,22 +46,31 @@ function togglePlay() {
 }
 
 // ---------------------------------------------------------------- project → song
+/** Where a moment of the old song falls in the new one: same chord, same fraction of it. */
+function mapTime(old, t, next) {
+  if (!old || t < old.vs || t > old.ve) return next.starts[next.n];
+  const i = idxAt(old, t), end = i + 1 < old.starts.length ? old.starts[i + 1] : old.end, frac = (t - old.starts[i]) / (end - old.starts[i]);
+  const k = Math.min(next.n - 1, i % old.n) + next.n, kEnd = next.starts[k + 1] !== undefined ? next.starts[k + 1] : next.end;
+  return Math.max(next.vs, Math.min(next.ve - 0.05, next.starts[k] + frac * (kEnd - next.starts[k])));
+}
 function rebuild(why) {
-  const mixOnly = why.kind === 'edit' && why.tag.startsWith('mix:');
-  const wasAt = engine.playing ? engine.time() : null;
-  if (mixOnly && song) { song.tracks = store.project.tracks; engine.setMix(song.tracks); return; }
+  const tag = why.kind === 'edit' ? why.tag : '';
+  const wasAt = engine.playing ? engine.time() : null, old = song;
+  if (tag.startsWith('mix:') && song) { song.tracks = store.project.tracks; engine.setMix(song.tracks); return; }
   const r = buildSong(store.project);
   song = r.song; $('songErr').textContent = r.error;
   if (song) {
     scrub.min = song.vs.toFixed(2); scrub.max = song.ve.toFixed(2);
-    // at rest the preview shows the first chord, not the glide that leads into it
-    if (why.kind === 'open' || +scrub.value < song.vs || +scrub.value > song.ve) scrub.value = String(Math.min(song.ve, song.starts[song.n]));
+    // at rest the preview shows the first chord, not the glide that leads into it; after an edit it stays on the same chord
+    scrub.value = String(why.kind === 'open' ? Math.min(song.ve, song.starts[song.n]) : mapTime(old, +scrub.value, song));
   }
   scrub.disabled = !song; dirty = true;
   if (why.kind === 'open' || !song) { stop(); return; }
-  if (wasAt === null || why.tag.startsWith('text:')) return;
-  // a new sound keeps the play head where it is; a change to the chords or the tempo starts the loop again
-  play(why.kind === 'edit' && why.tag.startsWith('sound:') && wasAt >= song.vs && wasAt < song.ve ? wasAt : song.vs);
+  if (wasAt === null) return;
+  // text on the video and melody notes do not touch what is sounding now: they are picked up when the loop comes round
+  if (tag.startsWith('text:') || tag.startsWith('melody')) return;
+  // everything else is heard at once, from the same place: the loop never jumps back to its start
+  play(mapTime(old, wasAt, song));
 }
 function syncHead() {
   $('projName').textContent = store.project.name;
@@ -78,11 +87,19 @@ const app = {
   /** Long jobs (exports) take over the canvas and the engine. */
   setBusy(on) { busy = on; if (on) stop(); dirty = true; },
   redraw() { dirty = true; },
+  /** Jump to chord i of the loop: the preview shows it, and it is heard (the loop continues from there if it is playing). */
+  goToChord(i) {
+    if (!song || busy) return;
+    const k = song.n + Math.max(0, Math.min(song.n - 1, i)), t = song.starts[k];
+    scrub.value = String(t); dirty = true;
+    if (engine.playing) { play(t); return; }
+    try { engine.auditionVoices(song, k); } catch (e) { /* no sound available: the preview still moves */ }
+  },
   /** Play one chord right now, so a choice in the chord picker can be heard. */
   audition(chord) {
     if (busy || engine.playing) return;
     const v = blockVoicing(chord), id = store.project.tracks.chords.instrument;
-    try { engine.audition([v.bass + 12, ...v.upper].sort((a, b) => a - b), id === 'none' ? 'softpiano' : id); } catch (e) { /* no sound available: the picker still works */ }
+    void id; try { engine.auditionNotes([v.bass, ...v.upper], store.project.tracks.voices.sound); } catch (e) { /* no sound available: the picker still works */ }
   },
   /** After a sound choice: start the loop if it is not playing, so the change is heard. */
   previewSound() { if (!engine.playing && song && !busy) play(song.vs); },

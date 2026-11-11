@@ -3,6 +3,7 @@
 import { INSTRUMENTS } from './instruments/index.js';
 import { hz } from './instrument.js';
 import { scheduleDrums } from './drums.js';
+import { GLIDE } from './glides.js';
 import { chordEvents, bassEvents, drumEvents, melodyEvents, limitPolyphony } from '../core/patterns.js';
 import { glideOf, slotPitch } from '../core/song.js';
 import { TRACK_IDS } from '../core/project.js';
@@ -46,30 +47,40 @@ function buildChannel(ac, dest, tracks, id, instrument) {
   return { input, vol, pan };
 }
 
-/** The gliding voices: six continuous oscillator pairs whose pitch slides from chord to chord. */
+/** The gliding voices: six continuous voices whose pitch slides from chord to chord, in the chosen glide sound. */
 function scheduleVoices(ac, out, song, abs) {
-  const S = song.starts, n = S.length, endAbs = abs(song.end), st = Math.max(0, abs(S[0]) - 0.1);
+  const S = song.starts, n = S.length, endAbs = abs(song.end), st = Math.max(0, abs(S[0]) - 0.1), stop = endAbs + 4;
+  const sound = GLIDE[song.tracks.voices.sound] || GLIDE.pad;
+  const trim = ac.createGain(); trim.gain.value = sound.level; trim.connect(out);
+  // one vibrato for the whole section, so the voices breathe together
+  let vib = null;
+  if (sound.vibrato.length) {
+    vib = ac.createGain(); vib.gain.value = 1;
+    for (const [rate, cents] of sound.vibrato) { const l = ac.createOscillator(); l.frequency.value = rate; const d = ac.createGain(); d.gain.value = cents; l.connect(d); d.connect(vib); l.start(st); l.stop(stop); }
+  }
   for (let k = 0; k < 6; k++) {
-    const o1 = ac.createOscillator(), o2 = ac.createOscillator(); o1.type = 'triangle'; o2.type = 'sine'; o2.detune.value = 7;
-    const fl = ac.createBiquadFilter(); fl.type = 'lowpass'; fl.frequency.value = k === 0 ? 1400 : 2200;
-    const g = ac.createGain(); g.gain.value = 0; g.gain.setValueAtTime(0, ac.currentTime);
-    for (const o of [o1, o2]) {
-      o.frequency.setValueAtTime(hz(slotPitch(song, 0, k)), st);
-      for (let i = 1; i < n; i++) {
-        const gl = glideOf(song, i);
-        o.frequency.setValueAtTime(hz(slotPitch(song, i - 1, k)), abs(S[i] - gl));
-        o.frequency.exponentialRampToValueAtTime(hz(slotPitch(song, i, k)), abs(S[i]));
-      }
-    }
-    for (let i = 0; i < n; i++) {
-      // a voice that doubles a lower one stays silent, so unisons do not get louder
-      let dup = false; for (let j = 0; j < k; j++) if (slotPitch(song, i, j) === slotPitch(song, i, k)) dup = true;
-      const lv = dup ? 0 : (k === 0 ? VOICES_LEVEL * 1.05 : VOICES_LEVEL), gl = i ? glideOf(song, i) : 0;
-      g.gain.setTargetAtTime(lv, abs(S[i] - gl), i ? Math.max(0.08, gl / 3) : 0.12);
-    }
-    g.gain.setTargetAtTime(0, endAbs, 0.08);
-    o1.connect(fl); o2.connect(fl); fl.connect(g); g.connect(out);
-    o1.start(st); o2.start(st); o1.stop(endAbs + 4); o2.stop(endAbs + 4);
+    const moves = []; for (let i = 1; i < n; i++) if (slotPitch(song, i, k) !== slotPitch(song, i - 1, k)) moves.push(abs(S[i]));
+    sound.voice(ac, trim, {
+      k, bass: k === 0, start: st, stop, vib, moves,
+      pitch(param, ratio = 1) {
+        param.setValueAtTime(hz(slotPitch(song, 0, k)) * ratio, st);
+        for (let i = 1; i < n; i++) {
+          const gl = glideOf(song, i);
+          param.setValueAtTime(hz(slotPitch(song, i - 1, k)) * ratio, abs(S[i] - gl));
+          param.exponentialRampToValueAtTime(hz(slotPitch(song, i, k)) * ratio, abs(S[i]));
+        }
+      },
+      amp(param, scale = 1) {
+        param.setValueAtTime(0, ac.currentTime);
+        for (let i = 0; i < n; i++) {
+          // a voice that doubles a lower one stays silent, so unisons do not get louder
+          let dup = false; for (let j = 0; j < k; j++) if (slotPitch(song, i, j) === slotPitch(song, i, k)) dup = true;
+          const lv = dup ? 0 : (k === 0 ? VOICES_LEVEL * 1.05 : VOICES_LEVEL) * scale, gl = i ? glideOf(song, i) : 0;
+          param.setTargetAtTime(lv, abs(S[i] - gl), i ? Math.max(0.08, gl / 3) : 0.12);
+        }
+        param.setTargetAtTime(0, endAbs, 0.08);
+      },
+    });
   }
 }
 
@@ -134,6 +145,7 @@ export function createEngine() {
   /** @type {GainNode|null} */ let sess = null;
   /** @type {Record<string, ReturnType<typeof buildChannel>>|null} */ let chans = null;
   let t0 = 0, playing = false;
+  /** @type {GainNode|null} */ let audit = null;
 
   function ensure() {
     if (ac) return ac;
@@ -165,6 +177,7 @@ export function createEngine() {
     /** Start playing `song` from song time `from`. Must follow a user gesture at least once. */
     play(song, from) {
       const a = this.unlock(); stop();
+      if (audit) { audit.gain.setTargetAtTime(0, a.currentTime, 0.03); audit = null; }
       sess = a.createGain(); sess.connect(/** @type {any} */(master).bus);
       t0 = a.currentTime + 0.15 - from;
       try { chans = scheduleSong(a, sess, song, t0, { live: true, from }); } catch (e) { stop(); throw e; }
@@ -181,9 +194,26 @@ export function createEngine() {
         const p = chans[id].pan; if (p) p.pan.setTargetAtTime(tracks[id].pan, ac.currentTime, 0.03);
       }
     },
+    /** Let one chord of the song be heard on its own, in the current glide sound (about a second and a half). */
+    auditionVoices(song, i) { this.auditionNotes([song.v[i].bass, ...new Set(song.v[i].upper)], song.tracks.voices.sound); },
+    /** Play these notes together in a glide sound, with a soft start and end. */
+    auditionNotes(midis, soundId) {
+      if (playing) return;
+      const a = this.unlock(), sound = GLIDE[soundId] || GLIDE.pad, m = /** @type {any} */(master);
+      if (audit) { const old = audit; old.gain.setTargetAtTime(0, a.currentTime, 0.03); setTimeout(() => { try { old.disconnect(); } catch (e) { /* gone */ } }, 400); }
+      const g = a.createGain(); g.gain.value = sound.level; g.connect(m.bus); audit = g;
+      const t0 = a.currentTime + 0.03, hold = 1.1, stop = t0 + hold + 1.2;
+      let vib = null;
+      if (sound.vibrato.length) { vib = a.createGain(); for (const [rate, cents] of sound.vibrato) { const l = a.createOscillator(); l.frequency.value = rate; const d = a.createGain(); d.gain.value = cents; l.connect(d); d.connect(vib); l.start(t0); l.stop(stop); } }
+      [...new Set(midis)].sort((x, y) => x - y).forEach((midi, k) => sound.voice(a, g, {
+        k, bass: k === 0, start: t0, stop, vib, moves: [t0],
+        pitch(param, ratio = 1) { param.setValueAtTime(hz(midi) * ratio, t0); },
+        amp(param, scale = 1) { param.setValueAtTime(0, a.currentTime); param.setTargetAtTime(VOICES_LEVEL * scale, t0, 0.04); param.setTargetAtTime(0, t0 + hold, 0.18); },
+      }));
+      setTimeout(() => { if (audit === g) audit = null; try { g.disconnect(); } catch (e) { /* gone */ } }, (hold + 1.4) * 1000);
+    },
     /** Play a few notes right now with an instrument (the chord picker uses it so choices can be heard). */
     audition(midis, instrumentId) {
-      if (playing) return;
       const a = this.unlock(), inst = INSTRUMENTS[instrumentId] || INSTRUMENTS.softpiano, m = /** @type {any} */(master);
       const g = a.createGain(); g.gain.value = inst.level; g.connect(m.bus);
       const life = { start: a.currentTime, end: a.currentTime + 8 }, shared = inst.setup ? inst.setup(a, g, life) : undefined;

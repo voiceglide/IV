@@ -2,6 +2,7 @@
 import { h } from './dom.js';
 import { TRACK_IDS, TRACK_LABEL, BASS_PATTERNS, DRUM_PATTERNS } from '../core/project.js';
 import { CHORD_INSTRUMENTS } from '../audio/instruments/index.js';
+import { GLIDES as GLIDE_SOUNDS } from '../audio/glides.js';
 
 const GLIDES = [[0.16, 'Short glide'], [0.26, 'Medium glide'], [0.42, 'Long glide']];
 const opt = (value, text) => h('option', { value: String(value), text });
@@ -13,7 +14,7 @@ export function initTracks(app) {
   const choice = {
     voices: () => h('select', { 'aria-label': 'Glide length', onChange: e => store.update(p => { p.glide = +e.target.value; }, 'sound:glide') }, GLIDES.map(([v, t]) => opt(v, t))),
     chords: () => h('select', { 'aria-label': 'Chord instrument', onChange: e => { store.update(p => { p.tracks.chords.instrument = e.target.value; }, 'sound:chords'); app.previewSound(); } },
-      opt('none', 'No instrument'), CHORD_INSTRUMENTS.map(i => opt(i.id, i.name))),
+      opt('none', 'No extra layer'), CHORD_INSTRUMENTS.map(i => opt(i.id, i.name))),
     bass: () => h('select', { 'aria-label': 'Bass pattern', onChange: e => { store.update(p => { p.tracks.bass.pattern = e.target.value; }, 'sound:bass'); app.previewSound(); } },
       Object.entries(BASS_PATTERNS).map(([v, t]) => opt(v, t))),
     drums: () => h('select', { 'aria-label': 'Drum pattern', onChange: e => { store.update(p => { p.tracks.drums.pattern = e.target.value; }, 'sound:drums'); app.previewSound(); } },
@@ -21,6 +22,13 @@ export function initTracks(app) {
     melody: () => h('select', { 'aria-label': 'Melody instrument', onChange: e => store.update(p => { p.tracks.melody.instrument = e.target.value; }, 'sound:melody') },
       CHORD_INSTRUMENTS.map(i => opt(i.id, i.name))),
   };
+
+  // the sound of the gliding voices: the main choice, as tiles
+  const tiles = GLIDE_SOUNDS.map(g => h('button', { class: 'tile', type: 'button', 'data-glide': g.id, onClick: () => {
+    store.update(p => { p.tracks.voices.sound = g.id; }, 'sound:glide'); app.previewSound();
+  } }, h('b', { text: g.name }), h('small', { text: g.hint })));
+  pane.append(h('div', null, h('div', { class: 'gh', text: 'Sound of the gliding voices' }), h('div', { class: 'tiles', role: 'group', 'aria-label': 'Sound of the gliding voices' }, tiles)),
+    h('div', { class: 'gh', text: 'Tracks' }));
 
   for (const id of TRACK_IDS) {
     const name = TRACK_LABEL[id];
@@ -52,6 +60,7 @@ export function initTracks(app) {
       u.strip.classList.toggle('idle', silent);
     }
     ui.melody.strip.hidden = !app.features.melody;
+    for (const el of tiles) el.setAttribute('aria-pressed', String(el.dataset.glide === (t.voices.sound || 'pad')));
   }
   store.subscribe(render); render();
 }

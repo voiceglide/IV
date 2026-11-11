@@ -2,9 +2,10 @@
 import { renderLoop } from '../audio/engine.js';
 import { INSTRUMENTS, CHORD_INSTRUMENTS, BASS_INSTRUMENTS } from '../audio/instruments/index.js';
 import { buildSong } from '../core/song.js';
+import { GLIDES } from '../audio/glides.js';
 import { newProject, normalizeProject } from '../core/project.js';
 
-export { INSTRUMENTS, CHORD_INSTRUMENTS, BASS_INSTRUMENTS, buildSong, newProject, normalizeProject, renderLoop };
+export { INSTRUMENTS, CHORD_INSTRUMENTS, BASS_INSTRUMENTS, GLIDES, buildSong, newProject, normalizeProject, renderLoop };
 
 /**
  * Render one loop of a project offline and measure it.

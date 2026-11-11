@@ -22,12 +22,12 @@ export const VERSION = 2;
  * @property {number} glide            seconds a voice takes to slide to the next chord
  * @property {ChordItem[]} chords      the master chord track
  * @property {{hook:string, question:string, reveal:string, watermark:string}} text  on-screen text for the video
- * @property {{voices:Mix, chords:Mix&{instrument:string}, bass:Mix&{instrument:string, pattern:string},
+ * @property {{voices:Mix&{sound:string}, chords:Mix&{instrument:string}, bass:Mix&{instrument:string, pattern:string},
  *   drums:Mix&{pattern:string}, melody:Mix&{instrument:string, notes:MelodyNote[]}}} tracks
  */
 
 export const TRACK_IDS = ['voices', 'chords', 'bass', 'drums', 'melody'];
-export const TRACK_LABEL = { voices: 'Gliding voices', chords: 'Chords', bass: 'Bass', drums: 'Drums', melody: 'Melody' };
+export const TRACK_LABEL = { voices: 'Gliding voices', chords: 'Extra layer', bass: 'Bass', drums: 'Drums', melody: 'Melody' };
 export const BASS_PATTERNS = { off: 'Off', root: 'Long notes', pulse: 'On every beat', fifth: 'Root and fifth', octave: 'Octaves' };
 export const DRUM_PATTERNS = { off: 'Off', soft: 'Soft pulse', basic: 'Basic beat', four: 'Four on the floor', half: 'Half time' };
 
@@ -71,7 +71,7 @@ export function newProject(name = 'Untitled', chordText = 'C G Am F') {
     chords: chordsFromText(chordText).chords,
     text: { hook: '', question: '', reveal: '', watermark: '' },
     tracks: {
-      voices: mix(0.8),
+      voices: { ...mix(0.8), sound: 'pad' },
       chords: { ...mix(0.8), instrument: 'none' },
       bass: { ...mix(0.8), instrument: 'bass', pattern: 'off' },
       drums: { ...mix(0.7), pattern: 'off' },
@@ -153,7 +153,7 @@ export function normalizeProject(raw) {
     key, glide: clamp(num(p.glide, 0.26), 0.02, 2), chords,
     text: { hook: str(p.text && p.text.hook), question: str(p.text && p.text.question), reveal: str(p.text && p.text.reveal), watermark: str(p.text && p.text.watermark, '', 60) },
     tracks: {
-      voices: mixOf(t.voices, d.tracks.voices),
+      voices: { ...mixOf(t.voices, d.tracks.voices), sound: str(t.voices && t.voices.sound, 'pad', 24) || 'pad' },
       chords: { ...mixOf(t.chords, d.tracks.chords), instrument: str(t.chords && t.chords.instrument, 'none', 24) || 'none' },
       bass: { ...mixOf(t.bass, d.tracks.bass), instrument: 'bass', pattern: t.bass && t.bass.pattern in BASS_PATTERNS ? t.bass.pattern : 'off' },
       drums: { ...mixOf(t.drums, d.tracks.drums), pattern: t.drums && t.drums.pattern in DRUM_PATTERNS ? t.drums.pattern : 'off' },
