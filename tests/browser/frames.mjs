@@ -80,6 +80,7 @@ export async function run(browser, url, r) {
     if (!update) r.check(!bad.length, `frames ${tag}: all five frames match their golden references`, bad.join('; ') + (bad.length ? ' (intended change? UPDATE_GOLDEN=1 npm run test:browser -- frames)' : ''));
   }
   if (update) { mkdirSync(dirname(GOLDEN), { recursive: true }); writeFileSync(GOLDEN, JSON.stringify(fresh) + '\n'); console.log(`     golden references written: ${GOLDEN}`); }
+  await textFit(page, r);
   await previewTheme(page, r);
   await context.close();
 }
@@ -99,4 +100,49 @@ async function previewTheme(page, r) {
   await page.emulateMedia({ colorScheme: 'dark' }); await page.waitForTimeout(100);
   st = await state(); r.check(st.theme === 'paper', 'preview: after stopping, the theme no longer follows');
   await page.emulateMedia({ colorScheme: null });
+}
+
+const LONG = {
+  word: { hook: 'Supercalifragilisticexpialidocious *pneumonoultramicroscopicsilicovolcanoconiosis* ok', question: 'Name this chord, it is really not that hard to guess if you listen carefully now please', reveal: 'ZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ - YYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYY', watermark: 'MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM' },
+  long: { hook: 'This is a really very long hook sentence that goes on and on and on, with highlighted *words* and many many more words than any sane person would put on a video', question: 'And what is the next chord in this very very long question that never really ends anyway?', reveal: 'The classic progression that powers a thousand pop songs across decades of radio and film - also known as the four chord song forever and ever', watermark: '@a_very_long_handle_that_goes_on_and_on_and_on_and_on_and_on_for_sixty_chars' },
+};
+
+/**
+ * Text that is too long must still sit inside the frame: every fillText of the header (hook, question, reveal, meta line) and of the watermark is
+ * recorded and its box checked against the safe side margins, the chord name above and the piano below, in all three ratios and both looks.
+ */
+async function textFit(page, r) {
+  const keep = await page.evaluate(() => JSON.parse(JSON.stringify(/** @type {any} */(window).__app.store.project.text)));
+  for (const [kind, text] of Object.entries(LONG)) {
+    await page.evaluate(t => { /** @type {any} */(window).__app.store.update(p => { Object.assign(p.text, t); }, 'text:test'); }, text);
+    await page.waitForFunction('!!window.__app.song()');
+    for (const theme of ['paper', 'night']) for (const [name, w, h] of RATIOS) {
+      const res = await page.evaluate(({ w, h, theme, SAFE }) => {
+        const app = /** @type {any} */(window).__app, s = app.song(), rd = app.renderer, g = rd.canvas.getContext('2d'); rd.configure({ w, h, theme }); const L = rd.layout;
+        const orig = g.fillText, boxes = [];
+        g.fillText = function (txt, x, y, ...rest) {
+          const wd = g.measureText(txt).width, sz = parseFloat(g.font.match(/([\d.]+)px/)[1]), a = g.textAlign, x0 = a === 'center' ? x - wd / 2 : a === 'right' ? x - wd : x;
+          boxes.push({ txt, x0, x1: x0 + wd, top: y - 0.8 * sz, bottom: y + 0.22 * sz, sz, alpha: g.globalAlpha }); return orig.call(g, txt, x, y, ...rest);
+        };
+        const phases = [], sf = SAFE[L.ratio]; const cyc = s.cycle;
+        for (let f = 0; f < 40; f++) { // a sweep through the loop: every layer is drawn at least once
+          boxes.length = 0; rd.draw(s, s.vs + f / 40 * cyc); const dbg = rd.debug(s, s.vs + f / 40 * cyc);
+          const nameTop = L.name - L.chordSize * 0.74, kb = L.kbY + L.kbH;
+          const base = b => b.bottom - 0.22 * b.sz, head = boxes.filter(b => b.alpha > 0.02 && base(b) > L.kicker * 0.8 && base(b) < L.name - L.chordSize * 0.4 && b.x0 < (L.ratio === '16:9' ? L.sx0 : w)), wm = boxes.filter(b => Math.abs(base(b) - L.handle) < 1);
+          const bad = [];
+          for (const b of [...head, ...wm]) { if (b.x0 < sf.side * w - 1 || b.x1 > w - sf.right * w + 1) bad.push(`x ${b.txt.slice(0, 14)} ${Math.round(b.x0)}..${Math.round(b.x1)} of ${w}`); }
+          for (const b of head) { if (b.bottom > nameTop + 1) bad.push(`overlap ${b.txt.slice(0, 14)} bottom ${Math.round(b.bottom)} > ${Math.round(nameTop)}`); if (b.top < 0) bad.push('above frame'); if (L.ratio === '16:9' && (b.x0 < L.cx - L.hookMaxW / 2 - 1 || b.x1 > L.cx + L.hookMaxW / 2 + 1)) bad.push(`panel ${b.txt.slice(0, 14)}`); }
+          for (const b of wm) { if (b.bottom > h) bad.push('watermark below frame'); if (L.ratio !== '16:9' && b.top < kb + 4) bad.push('watermark touches the piano'); }
+          phases.push({ layer: dbg.layer, bad, wm: wm.length });
+        }
+        g.fillText = orig; rd.configure({ w: 1080, h: 1920, theme: 'paper' }); rd.draw(s, s.vs);
+        return phases;
+      }, { w, h, theme, SAFE: { '9:16': { side: 0.06, right: 0.12 }, '1:1': { side: 0.05, right: 0.05 }, '16:9': { side: 0.04, right: 0.04 } } });
+      const bad = res.filter(x => x.bad.length), layers = new Set(res.map(x => x.layer));
+      r.check(!bad.length, `text fit (${kind}) ${theme} ${name}: header and watermark stay inside the safe area and above the chord name`, bad.slice(0, 3).map(x => x.layer + ': ' + x.bad.join(', ')).join(' | '));
+      r.check(['hook', 'question', 'reveal'].every(l => layers.has(l)), `text fit (${kind}) ${theme} ${name}: hook, question and reveal each get their time`, [...layers].join());
+      r.check(res.some(x => x.wm), `text fit (${kind}) ${theme} ${name}: the watermark is drawn`);
+    }
+  }
+  await page.evaluate(t => { /** @type {any} */(window).__app.store.update(p => { Object.assign(p.text, t); }, 'text:test'); }, keep);
 }

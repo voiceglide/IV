@@ -33,6 +33,21 @@ export async function run(browser, url, r) {
     if (cover.shown) r.check(cover.shown.chord === cover.first, 'video: frame 0 shows the first chord', JSON.stringify(cover.shown));
   }
 
+  // short loops: one chord at 90 bpm with hook and reveal. Frame 0 is the cover (hook, cleanly), the reveal comes later, frame N equals frame 0
+  await page.evaluate(() => { const a = /** @type {any} */(window).__app; a.store.update(p => { p.chords = [{ id: 'c0', sym: 'Fmaj7', beats: null, section: '' }]; p.tempo = 90; Object.assign(p.text, { hook: 'Watch the *voices* glide', question: 'Which chord?', reveal: 'Fmaj7 - the dreamy one' }); }, 'text:test'); });
+  await page.waitForFunction('!!window.__app.song()');
+  const short = await page.evaluate(() => {
+    const a = /** @type {any} */(window).__app, s = a.song(), seen = {};
+    for (let f = 0; f < 60; f++) { const d = a.renderer.debug(s, s.vs + f / 60 * s.cycle); if (d.alpha > 0.9) seen[d.layer] = true; }
+    return { cycle: s.cycle, first: a.renderer.debug(s, s.vs), seen: Object.keys(seen) };
+  });
+  r.check(short.first.layer === 'hook' && short.first.alpha === 1, 'video (short loop): frame 0 shows the hook at full strength', JSON.stringify(short));
+  r.check(['hook', 'question', 'reveal'].every(l => short.seen.includes(l)), 'video (short loop): hook, question and reveal each get a window', short.seen.join());
+  const sloop = await frameDiff(page, 0, 1);
+  r.check(sloop.diff / sloop.total < 0.001, 'video (short loop): frame N equals frame 0', `${sloop.diff} px differ`);
+  await page.reload(); await page.waitForFunction('window.__app && !!window.__app.song()');
+  { const w = await page.waitForSelector('#welcomeSheet', { timeout: 1500 }).catch(() => null); if (w) await page.click('#welcomeSheet button:has-text("Skip")'); }
+
   // a real export
   await page.evaluate(() => { const w = /** @type {any} */(window); w.__long = []; new PerformanceObserver(l => { for (const e of l.getEntries()) w.__long.push(e.duration); }).observe({ entryTypes: ['longtask'] }); });
   await page.click('#exportBtn'); await page.waitForSelector('#exportSheet');
