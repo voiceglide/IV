@@ -2,7 +2,7 @@
 // Preferred path: every frame is drawn and encoded one by one (H.264 + AAC or Opus in an MP4), faster or slower than
 // real time, never dropping a frame, on its own canvas (the preview is not touched) and in small slices so the page stays usable.
 // Where the browser has no such encoders, the canvas is recorded in real time instead (said out loud, not silently).
-import { Muxer, ArrayBufferTarget } from 'mp4-muxer';
+import { Muxer, ArrayBufferTarget, FileSystemWritableFileStreamTarget } from 'mp4-muxer';
 import { renderLoop } from '../audio/engine.js';
 import { createRenderer, RATIOS } from '../render/draw.js';
 
@@ -70,6 +70,40 @@ function makeFrame(cv, timestamp, duration) {
   }
   return new VideoFrame(cv, { timestamp, duration });
 }
+/**
+ * Where the finished MP4 is written. Preferred: a file in the browser's private storage (OPFS), so the video lives on disk and the page
+ * never holds the whole file twice; the Blob handed back is that file. Fallback: memory, with one buffer and no extra copy kept around.
+ * `finish()` resolves the Blob and a function giving the bytes once (for the sound check); `discard()` removes a half-written file.
+ */
+const PREFIX = 'iv-export-';
+/** @type {string|null} the file behind the video the person is looking at; it is removed when the next export succeeds */
+let liveName = null;
+async function openSink() {
+  try {
+    const nav = /** @type {any} */(globalThis.navigator), dir = nav && nav.storage && nav.storage.getDirectory ? await nav.storage.getDirectory() : null;
+    if (!dir) throw new Error('no private storage');
+    // files left by an earlier visit (closed mid-export, or never cleaned) go; a file from the last minute may belong to another tab
+    for await (const [n] of dir.entries()) if (n.startsWith(PREFIX) && n !== liveName && Date.now() - (+n.slice(PREFIX.length, -4) || 0) > 60000) await dir.removeEntry(n).catch(() => {});
+    const name = `${PREFIX}${Date.now()}.mp4`, handle = await dir.getFileHandle(name, { create: true }), stream = await handle.createWritable();
+    return {
+      target: new FileSystemWritableFileStreamTarget(stream), disk: true,
+      async finish() {
+        await stream.close(); const file = await handle.getFile();
+        return { blob: /** @type {Blob} */(file), bytes: () => file.arrayBuffer() };
+      },
+      commit() { const old = liveName; liveName = name; if (old) dir.removeEntry(old).catch(() => {}); }, // the new video replaces the one on screen
+      async discard() { try { await stream.abort(); } catch (e) { /* already closed */ } try { await dir.removeEntry(name); } catch (e) { /* already gone */ } },
+    };
+  } catch (e) {
+    const target = new ArrayBufferTarget();
+    return {
+      target, disk: false,
+      async finish() { const buf = target.buffer; return { blob: new Blob([buf], { type: 'video/mp4' }), bytes: async () => buf }; }, // decoding consumes buf: no second copy is kept
+      commit() { /* nothing on disk */ },
+      async discard() { /* nothing on disk */ },
+    };
+  }
+}
 const closeQuietly = enc => { try { if (enc && enc.state !== 'closed') enc.close(); } catch (e) { /* already closed */ } };
 
 async function exportFrames(song, o, vcfg, ainfo) {
@@ -86,7 +120,8 @@ async function exportFrames(song, o, vcfg, ainfo) {
   // The loop lasts exactly as long as the sound (a whole number of samples). The frame count is rounded from 30 fps, then the frame rate is
   // nudged (29.9…30.1) so that frames × frame duration == loop duration, which keeps video and sound locked on every repeat.
   const D = ab.length / SR, N = Math.max(1, Math.round(D * FPS)), fdur = D / N;
-  const muxer = new Muxer({ target: new ArrayBufferTarget(), video: { codec: 'avc', width: W, height: H, frameRate: 90000 }, // frameRate is the track's time unit
+  const sink = await openSink();
+  const muxer = new Muxer({ target: sink.target, video: { codec: 'avc', width: W, height: H, frameRate: 90000 }, // frameRate is the track's time unit
     audio: { codec: ainfo.mux, numberOfChannels: 2, sampleRate: SR }, fastStart: 'in-memory', firstTimestampBehavior: 'offset' });
   /** @type {any} */ let fail = null;
   /** @type {{data:Uint8Array, type:string, ts:number, dur:number, meta:any}[]} */ const aOut = [];
@@ -133,12 +168,14 @@ async function exportFrames(song, o, vcfg, ainfo) {
       if (f % 2 === 1) { if (f % 10 === 9) onStatus('Rendering video…', f / N); await nextTurn(); } // let the page breathe: no long stretch without a turn for the browser
     }
     await ve.flush(); closeQuietly(ve); if (fail) throw fail; muxer.finalize();
-  } finally { closeQuietly(ae); closeQuietly(ve); }
-  const buf = muxer.target.buffer;
-  const blob = new Blob([buf], { type: 'video/mp4' }); // the blob keeps its own copy, so the buffer can be handed to the decoder as it is
+  } catch (e) { closeQuietly(ae); closeQuietly(ve); await sink.discard(); throw e; }
+  let fin;
+  try { fin = await sink.finish(); } catch (e) { await sink.discard(); throw e; }
+  const { blob } = fin;
   onStatus('Checking the sound…', -1);
-  const peak = await decodedPeak(engine.unlock(), buf);
-  if (peak !== null && peak < 1e-4) throw new Error('the sound track came out silent');
+  const peak = await decodedPeak(engine.unlock(), await fin.bytes());
+  if (peak !== null && peak < 1e-4) { await sink.discard(); throw new Error('the sound track came out silent'); }
+  sink.commit();
   return { blob, ext: 'mp4', desc: `MP4 · ${W}×${H} · ${(N / D).toFixed(2)} fps · ${ainfo.mux === 'aac' ? 'AAC' : 'Opus'} sound` };
 }
 
