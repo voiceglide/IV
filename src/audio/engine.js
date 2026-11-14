@@ -91,7 +91,7 @@ function buildChannel(ac, dest, tracks, id, instrument) {
 }
 
 /** @typedef {Record<string, ReturnType<typeof buildChannel>>} Channels */
-function buildChannels(ac, dest, tracks) {
+export function buildChannels(ac, dest, tracks) {
   const chordInst = INSTRUMENTS[tracks.chords.instrument] || null;
   const bassInst = INSTRUMENTS[tracks.bass.instrument] || INSTRUMENTS.softpiano;
   const melodyInst = INSTRUMENTS[tracks.melody.instrument] || INSTRUMENTS.softpiano;
@@ -118,7 +118,7 @@ function scheduleVoices(ac, out, song, abs, o) {
   const style = song.glideStyle || { curve: 'eased', vibrato: 0.5, swell: 0.5 }, depth = 2 * style.vibrato, sw = style.swell;
   const st = o.cont ? loC : Math.max(0, loC - 0.1), stop = hiC + 0.15;
   /** @type {any[]} */ const reg = [];
-  const pass = ac.createGain(); pass.connect(out);
+  const pass = ac.createGain(); pass.connect(out); reg.push(pass);
   const ramp = (up) => { const a = new Float32Array(24); for (let j = 0; j < 24; j++) { const u = j / 23; a[j] = up ? Math.sin(u * Math.PI / 2) : Math.cos(u * Math.PI / 2); } return a; };
   pass.gain.value = o.cont ? 0 : 1;
   if (o.cont) pass.gain.setValueCurveAtTime(ramp(true), loC, XF);
@@ -127,7 +127,7 @@ function scheduleVoices(ac, out, song, abs, o) {
   const group = sound => {
     let g = groups.get(sound.id);
     if (!g) {
-      const trim = ac.createGain(); trim.gain.value = sound.level; trim.connect(pass);
+      const trim = ac.createGain(); trim.gain.value = sound.level; trim.connect(pass); reg.push(trim);
       let lfo = null;
       if (sound.vibrato.length) {
         lfo = ac.createGain(); lfo.gain.value = 1;
@@ -231,31 +231,47 @@ export function scheduleSong(ac, dest, song, t0, opts = {}) {
  * A looping play: passes of [vs, ve) scheduled one after the other, seamlessly.
  * `playAt` is the context time at which song time `from` should sound.
  */
-function createLooper(ac, built, song0, playAt, from, opts = {}) {
+export function createLooper(ac, built, song0, playAt, from, opts = {}) {
   const song = Object.assign({}, song0, { loop: true });
   const { vs, ve, cycle } = song;
   from = Math.min(Math.max(from, vs), ve - 0.01);
   const t0 = playAt - from;
-  /** @type {any[]} */ let reg = [];
+  /** Passes still sounding (or about to): `end` is the context time after which nothing of the pass can be heard. */
+  /** @type {{end:number, nodes:any[]}[]} */ let live = [];
   let k = 0;
   const startOf = j => t0 + j * cycle + vs;      // context time at which pass j begins (song time vs)
+  const GRACE = 1;                               // seconds after a pass's end before its nodes are let go
+  /** Let go of every pass that is over: disconnect its nodes and drop the references, so they can be freed. */
+  function prune() {
+    const now = ac.currentTime;
+    live = live.filter(p => {
+      if (p.end + GRACE >= now) return true;
+      for (const n of p.nodes) { try { n.disconnect(); } catch (e) { /* already gone */ } }
+      return false;
+    });
+  }
   function schedule() {
     const first = k === 0, T = t0 + k * cycle;
-    reg.push(...schedulePass(ac, built, song, T, {
+    const nodes = schedulePass(ac, built, song, T, {
       live: first && !!opts.live, from: first ? from : undefined, only: opts.only, skip: opts.skip,
       win: first ? [opts.live ? -Infinity : vs, ve] : [vs, ve],
       voices: first ? { lo: song.starts[0], hi: ve + XF / 2, fade: XF, cont: false } : { lo: vs - XF / 2, hi: ve + XF / 2, fade: XF, cont: true },
-    }));
+    });
+    live.push({ end: T + ve + XF / 2 + 0.2, nodes });
     k++;
   }
   return {
-    /** Schedule every pass that starts within the lookahead. */
-    pump() { while (startOf(k) - LOOKAHEAD <= ac.currentTime) schedule(); },
+    /** Schedule every pass that starts within the lookahead, and let go of the passes that are over. */
+    pump() { prune(); while (startOf(k) - LOOKAHEAD <= ac.currentTime) schedule(); },
     /** Schedule exactly n passes (offline). */
     all(n) { while (k < n) schedule(); },
+    /** The tracks the NEXT pass is built from (drum grid, melody notes, bass pattern): what is already scheduled is left alone. */
+    setTracks(tracks) { song.tracks = tracks; },
+    /** How many nodes of finished and running passes are still referenced (tests: this must plateau). */
+    retained() { return live.reduce((a, p) => a + p.nodes.length, 0); },
     /** Song time at context time `now`, wrapped into the loop window. */
     timeAt(now) { const t = now - t0; return t < ve ? t : vs + ((t - vs) % cycle); },
-    kill(at) { for (const s of reg) { try { s.stop(at); } catch (e) { /* not started or already over */ } } reg = []; },
+    kill(at) { for (const p of live) for (const s of p.nodes) { try { s.stop(at); } catch (e) { /* not started or already over */ } } live = []; },
   };
 }
 
@@ -360,6 +376,8 @@ export function createEngine() {
       playing = true;
     },
     stop,
+    /** Hand the loop the project's current tracks: the next pass uses the new drum grid, melody notes and bass pattern (no restart). */
+    setTracks(tracks) { if (looper) looper.setTracks(tracks); },
     /** Song time of the play head (in a loop: always inside [vs, ve)). */
     time() { if (!ac) return 0; return looper ? looper.timeAt(ac.currentTime) : ac.currentTime - t0; },
     /** Apply fader, pan, mute and solo changes to what is playing, without a restart. */
