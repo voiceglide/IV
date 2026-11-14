@@ -50,7 +50,7 @@ const easeOutQuad = u => { u = clamp(u); return 1 - (1 - u) * (1 - u); };
 const easeOutBack = u => { u = clamp(u); const c1 = 1.70158, c3 = c1 + 1; return 1 + c3 * Math.pow(u - 1, 3) + c1 * Math.pow(u - 1, 2); };
 const REVEAL = 2.7;
 const HOOK_ON = 2.3, HOOK_OFF = 2.45, LATE_OUT = 0.35, WRAP_IN = 0.12;
-const EXTRA = 0.62; // share of a chord's width that is given to the glide: the time axis is stretched around every chord change
+const EXTRA = 0;  // share of a chord's width that is given to the glide: the time axis is stretched around every chord change
 
 // ---------- loop time ----------
 // Everything on screen is periodic in song.cycle, so the first frame and the frame one cycle later are identical.
