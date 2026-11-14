@@ -11,8 +11,10 @@ works, but using it is clumsy. This plan fixes both. Same rules as before (see P
 - Playback keeps its place when a chord, the tempo or a sound changes: the loop no longer jumps back to its start.
 - Melody: two octaves, optional "All notes", tap to add, tap a note to select it, then shorter / longer / lower /
   higher / delete; play head line; notes can be added while the loop plays; taller panel on that tab.
-Still to do: everything below that is not listed above — in particular glide expression (A3), per-voice sounds (A4),
-the listening page (A7), the always-visible chord strip and inline picker (B1, B2).
+Done since then: glide expression (A3: curve, vibrato, swell), per-voice sounds (A4), the listening page `sound-check.html` (A7),
+the chord strip and inline picker (B1, B2), the progression library, transpose and "Surprise me" (B3), scenes (B4), the one-tap video export (B6), the drum step grid.
+Still to do: what only a person can do. Listen to every glide sound on a phone with `sound-check.html` and note what to retouch (nothing has been listened to),
+and try the app on a real iPhone, Android phone and Safari (see QA.md "Not verified").
 
 ## Part A — instruments that glide (priority)
 1. **A second instrument interface: the glide voice.** A continuous sound whose pitch is driven by the engine

@@ -55,4 +55,6 @@ checked with `node scripts/profile-instrument.mjs <id>`. The bass track keeps a 
 
 ## Foundations hardening (audit fixes)
 Done in `src/core` and `src/storage` with tests in `tests/hardening.test.mjs`, `tests/fuzz.test.mjs` (seeded) and `tests/storage.test.mjs`; `tests/midi-parse.mjs` reads exported MIDI back.
-Deferred: `strictNullChecks` (about 29 errors, none in the foundations files: audio, render and ui) and a UI retry of a failed autosave (`src/ui/projects.js`).
+Deferred: `strictNullChecks` (about 29 errors, none in the foundations files: audio, render and ui). A failed autosave is retried after 5 seconds (`src/ui/projects.js`).
+
+Foundations fix round (QA findings, see QA.md "Bugs found and fixed" 5–14 and DECISIONS.md "Foundations fix round"): tests in `tests/foundations.test.mjs`, `tests/storage-foundations.test.mjs`, `tests/browser/tabs.mjs` and `tests/browser/pwa.mjs`.
