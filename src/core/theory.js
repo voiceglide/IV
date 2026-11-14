@@ -38,39 +38,83 @@ export function parseChord(s){
   const q=normQ(m[3]); if(q===null) return null;
   return makeChord(m[1],m[2],q,m[4]?m[4].toUpperCase()+(m[5]||''):'');
 }
-export const MAX_CHORDS=512, MAX_REPEAT=64, MAX_EXPANDED_CHARS=20000;
+export const MAX_CHORDS=512, MAX_REPEAT=64, MAX_EXPANDED_CHARS=20000, MAX_TEXT_CHARS=20000;
 export const MSG_TOO_BIG='This progression is too long: the repeats expand to more than '+MAX_CHORDS+' chords. Shorten it or use fewer repeats.';
 /** Thrown when repeats would expand beyond a sane size. The message is written for the person using the app. */
 export class ProgressionError extends Error {}
-// Section names "[...]" and lyrics "..." are protected while repeats expand, so "(soft)x2" inside a name stays text.
-export function expandRepeats(text){
-  const kept=[]; text=String(text).replace(/[]/g,' ');
-  text=text.replace(/"[^"]*"|\[[^\]]*\]/g,m=>{kept.push(m); return ''+(kept.length-1)+'';});
-  let prev;
-  do{prev=text; text=text.replace(/\(([^()]*)\)\s*[x×*](\d+)/g,(_,body,n)=>{
-    const k=Math.min(MAX_REPEAT,+n); if(body.length*k>MAX_EXPANDED_CHARS) throw new ProgressionError(MSG_TOO_BIG);
-    return Array(k).fill(body).join(' ');});
-    if(text.length>MAX_EXPANDED_CHARS) throw new ProgressionError(MSG_TOO_BIG);
-  }while(text!==prev);
-  return text.replace(/[()]/g,' ').replace(/(\d+)/g,(_,i)=>kept[+i]);
+/** A section name as it is stored: no brackets or line breaks (they are the syntax of "[...]"), at most 60 characters. */
+export const cleanSection=x=>String(x).slice(0,60).replace(/[[\]\r\n]+/g,' ').trim();
+const WS=/\s/;
+/**
+ * One linear pass over the text. Returns tokens {k, v}: k 'q' a lyric "...", 's' a section "[...]", 'b' an unmatched "[" with the
+ * word after it (a bad token), 'w' a word. Repeats "(...)xN" are expanded on the way, nested ones too. Section names and lyrics
+ * are protected, so "(soft)x2" inside a name stays text. A "[" that has no "]" before the next "[" never swallows what follows it.
+ * @returns {{k:string, v:string}[]}
+ */
+function scan(text){
+  text=String(text).replace(/[]/g,' ');
+  if(text.length>MAX_EXPANDED_CHARS) throw new ProgressionError(MSG_TOO_BIG);
+  const out=[], starts=[], n=text.length; let i=0, total=text.length, chars=0, nq=-2, nc=-2, no=-2;
+  // next position of a character after i, remembered so that every character is looked at once
+  const next=(ch,i,cached)=>cached!==-1&&cached<=i?text.indexOf(ch,i+1):cached;
+  const push=(k,v)=>{out.push({k,v}); chars+=v.length+1;};
+  while(i<n){
+    const c=text[i];
+    if(WS.test(c)){i++; continue;}
+    if(c==='('){starts.push({at:out.length,chars}); i++; continue;}
+    if(c===')'){
+      i++;
+      const g=starts.pop(); if(!g) continue;
+      let j=i; while(j<n&&WS.test(text[j])) j++;
+      if((text[j]==='x'||text[j]==='×'||text[j]==='*')&&text[j+1]>='0'&&text[j+1]<='9'){
+        let k=0; j++; while(j<n&&text[j]>='0'&&text[j]<='9'){k=Math.min(MAX_REPEAT,k*10+(+text[j])); j++;}
+        const body=out.slice(g.at), size=chars-g.chars;
+        total+=size*(k-1); if(total>MAX_EXPANDED_CHARS) throw new ProgressionError(MSG_TOO_BIG);
+        out.length=g.at; chars=g.chars;
+        for(let r=0;r<k;r++) for(const t of body) push(t.k,t.v);
+        i=j;
+      }
+      continue;
+    }
+    if(c==='"'){nq=next('"',i,nq); if(nq!==-1){push('q',text.slice(i,nq+1)); i=nq+1; continue;}}
+    if(c==='['){
+      nc=next(']',i,nc); no=next('[',i,no);
+      if(nc!==-1&&(no===-1||nc<no)){push('s',text.slice(i,nc+1)); i=nc+1; continue;}
+      let j=i+1; while(j<n&&!WS.test(text[j])&&text[j]!=='('&&text[j]!==')') j++;
+      push('b',text.slice(i,j)); i=j; continue;
+    }
+    let j=i;
+    while(j<n){
+      const d=text[j];
+      if(WS.test(d)||d==='|'||d==='('||d===')') break;
+      if(d===','&&!(text[j-2]===':'&&text[j-1]>='0'&&text[j-1]<='9'&&text[j+1]>='0'&&text[j+1]<='9')) break;
+      j++;
+    }
+    if(j===i){i++; continue;} // a lone "|" or ","
+    push('w',text.slice(i,j)); i=j;
+  }
+  return out;
 }
-/** On a progression that is too large, chords is empty and `error` says why (it is also put in `bad`).
- * @returns {{chords:any[], bad:string[], sharps:boolean, error?:string}} */
+export function expandRepeats(text){return scan(text).map(t=>t.v).join(' ');}
+/** On a progression that is too large, chords is empty and `error` says why (it is also put in `bad`); `first` then holds the first
+ * MAX_CHORDS chords when the only problem is their number, so a caller that must keep something (opening an old file) can.
+ * @returns {{chords:any[], bad:string[], sharps:boolean, error?:string, first?:any[]}} */
 export function parseProgression(text){
   text=String(text);
-  let expanded;
-  try{expanded=expandRepeats(text);}catch(e){if(e instanceof ProgressionError) return {chords:[],bad:['(too many repeats)'],sharps:false,error:e.message}; throw e;}
-  const toks=expanded.match(/"[^"]*"|\[[^\]]*\]|\[[^\s]*|(?:[^\s|,]|(?<=:\d),(?=\d))+/g)||[]; const out=[], bad=[];
+  let toks;
+  try{toks=scan(text);}catch(e){if(e instanceof ProgressionError) return {chords:[],bad:['(too many repeats)'],sharps:false,error:e.message}; throw e;}
+  const out=[], bad=[];
   let section='', lyric=null, secStart=true;
-  for(const t of toks){
-    if(t[0]==='"'){lyric=t.slice(1,-1).trim(); continue;}
-    if(t[0]==='['){ if(t[t.length-1]!==']'){bad.push(t); continue;} section=t.slice(1,-1).trim(); secStart=true; continue;}
+  for(const {k,v:t} of toks){
+    if(k==='q'){lyric=t.slice(1,-1).trim(); continue;}
+    if(k==='s'){section=cleanSection(t.slice(1,-1)); secStart=true; continue;}
+    if(k==='b'){bad.push(t); continue;}
     let beats=null, body=t; const mm=t.match(/^(.+?):(\d+(?:[.,]\d+)?)$/);
     if(mm){body=mm[1]; beats=Math.max(0.25,parseFloat(mm[2].replace(',','.')));}
     const c=parseChord(body);
     if(c){c.beats=beats; c.section=section; c.secStart=secStart; secStart=false; c.lyric=lyric; lyric=null; out.push(c);} else bad.push(t);
   }
-  if(out.length>MAX_CHORDS) return {chords:[],bad:['(too many chords)'],sharps:false,error:MSG_TOO_BIG};
+  if(out.length>MAX_CHORDS) return {chords:[],bad:['(too many chords)'],sharps:false,error:MSG_TOO_BIG,first:out.slice(0,MAX_CHORDS)};
   return {chords:out,bad,sharps:/[#♯]/.test(text)};
 }
 export function chordToText(c){

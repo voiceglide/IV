@@ -12,16 +12,17 @@ permissions:
   pages: write
   id-token: write
 
-concurrency:
-  group: "pages"
-  cancel-in-progress: true
-
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # one group per branch or pull request: a newer run replaces an older run of the same ref, and never touches a deploy
+    concurrency:
+      group: build-${{ github.workflow }}-${{ github.ref }}
+      cancel-in-progress: true
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v4.2.2
+      - uses: actions/setup-node@v4.1.0
         with:
           node-version: 22
           cache: npm
@@ -32,13 +33,21 @@ jobs:
         env:
           FEEDBACK_URL: ${{ vars.FEEDBACK_URL }}
       - run: npm test
-      - run: npm install --no-save playwright@1.49.1 && npx playwright install --with-deps chromium
-      - run: npm run test:browser
+      # ffprobe checks the exported videos; the video test must not be skipped for want of it
+      - name: Install ffmpeg
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg && ffprobe -version | head -1
+        timeout-minutes: 10
+      - name: Install Playwright
+        run: npm install --no-save playwright@1.49.1 && npx playwright install --with-deps chromium
+        timeout-minutes: 10
+      - name: Browser tests
+        run: npm run test:browser
+        timeout-minutes: 20
         env:
           REQUIRE_BROWSER_TESTS: '1'
-      - uses: actions/configure-pages@v5
+      - uses: actions/configure-pages@v5.0.0
         if: github.event_name != 'pull_request'
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/upload-pages-artifact@v3.0.1
         if: github.event_name != 'pull_request'
         with:
           path: dist
@@ -47,9 +56,14 @@ jobs:
     needs: build
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # only deploys share this group, and a deploy in progress is never cancelled halfway
+    concurrency:
+      group: pages
+      cancel-in-progress: false
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v4.0.5

@@ -1,10 +1,20 @@
 // Edits on the chord track. Each one changes a project draft in place (see ui/store.js) and is pure otherwise.
-import { parseChord } from './theory.js';
+import { parseChord, MAX_CHORDS } from './theory.js';
 import { newId } from './project.js';
 
-/** Insert a chord after position `at` (−1 puts it first). Returns the new chord's index. */
+export { MAX_CHORDS };
+export const MSG_CHORD_LIMIT = `A project holds at most ${MAX_CHORDS} chords, so no chord was added. Delete a few to make room.`;
+/** Who hears about a refused edit. The app sets this to its toast; by default nothing is shown. @type {(message:string)=>void} */
+let onLimit = () => {};
+export function setLimitNotice(fn) { onLimit = typeof fn === 'function' ? fn : () => {}; }
+/** True when the project cannot take another chord. */
+export const atChordLimit = p => p.chords.length >= MAX_CHORDS;
+
+/** Insert a chord after position `at` (−1 puts it first). Returns the new chord's index. At the limit nothing is inserted, the notice is
+ * raised, and the index of the chord that is already there is returned, so a caller that selects the result still selects a real chord. */
 export function insertChord(p, at, sym = 'C') {
   const i = Math.max(0, Math.min(p.chords.length, at + 1));
+  if (atChordLimit(p)) { onLimit(MSG_CHORD_LIMIT); return Math.min(i, p.chords.length - 1); }
   p.chords.splice(i, 0, { id: newId().slice(0, 8), sym, beats: null, section: '' });
   return i;
 }
@@ -13,7 +23,10 @@ export function removeChord(p, i) {
   // a section label moves on to the next chord instead of vanishing with its first one
   if (gone && gone.section && p.chords[i] && !p.chords[i].section) p.chords[i].section = gone.section;
 }
-export function duplicateChord(p, i) { const c = p.chords[i]; p.chords.splice(i + 1, 0, { id: newId().slice(0, 8), sym: c.sym, beats: c.beats, section: '' }); return i + 1; }
+export function duplicateChord(p, i) {
+  if (atChordLimit(p)) { onLimit(MSG_CHORD_LIMIT); return i; }
+  const c = p.chords[i]; p.chords.splice(i + 1, 0, { id: newId().slice(0, 8), sym: c.sym, beats: c.beats, section: '' }); return i + 1;
+}
 /** Swap with the neighbour on the left (dir −1) or right (dir 1). Returns the chord's new index. */
 export function moveChord(p, i, dir) {
   const j = i + dir; if (j < 0 || j >= p.chords.length) return i;

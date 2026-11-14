@@ -2,7 +2,7 @@
 // transpose, "Surprise me", and a text box for people who type. The always-visible chord strip lives in strip.js.
 import { h } from './dom.js';
 import { toast } from './sheet.js';
-import { FLAT } from '../core/theory.js';
+import { FLAT, MAX_TEXT_CHARS } from '../core/theory.js';
 import { chordsFromText, chordsToText, newId } from '../core/project.js';
 import { transposeChords, tempoFromTaps } from '../core/edit.js';
 import { surprise, KEY_NAMES } from '../core/library.js';
@@ -25,7 +25,7 @@ export function initChords(app) {
   const beats = h('select', { id: 'beats' }, BEATS.map(b => opt(b, String(b))));
   const key = h('select', { id: 'key' }, opt('auto', 'Auto'));
   for (let r = 0; r < 12; r++) for (const m of [false, true]) key.append(opt(r + (m ? ':m' : ''), FLAT[r] + (m ? ' minor' : ' major')));
-  const text = h('textarea', { id: 'chordText', spellcheck: false, autocapitalize: 'off', autocomplete: 'off', 'aria-label': 'Chords as text', 'aria-describedby': 'chordTextErr' });
+  const text = h('textarea', { id: 'chordText', spellcheck: false, autocapitalize: 'off', autocomplete: 'off', 'aria-label': 'Chords as text', 'aria-describedby': 'chordTextErr', maxLength: MAX_TEXT_CHARS });
   const textErr = h('div', { class: 'err', id: 'chordTextErr', role: 'alert' });
   const step = d => () => setTempo(store.project.tempo + d);
 
@@ -76,6 +76,7 @@ export function initChords(app) {
   text.addEventListener('input', () => {
     clearTimeout(typing);
     typing = window.setTimeout(() => {
+      if (text.value.length >= MAX_TEXT_CHARS) { textErr.textContent = `The text box holds at most ${MAX_TEXT_CHARS.toLocaleString('en-US')} characters. Anything beyond that was cut off, and nothing was changed.`; return; }
       const r = chordsFromText(text.value);
       if (r.error) { textErr.textContent = r.error; return; }
       if (r.bad.length) { textErr.textContent = `Not a chord: ${r.bad.slice(0, 4).join(', ')}. Use names like C, Am7, F#m or G/B.`; return; }

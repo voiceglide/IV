@@ -29,7 +29,7 @@ function randomText(r) {
 }
 function chord(r) { return pick(r, ROOTS) + pick(r, QUALS) + (r() < 0.15 ? '/' + pick(r, ROOTS) : ''); }
 
-const JUNK = [null, undefined, NaN, Infinity, -1, 0, 1.5, 1e308, 5e-324, '', 'x', '__proto__', 'constructor', [], {}, true, 'C G', '[', ']', '(((C)x64)x64)x64'];
+const JUNK = [null, undefined, NaN, Infinity, -1, 0, 1.5, 1e308, 5e-324, '', 'x', '__proto__', 'constructor', [], {}, true, 'C G', '[', ']', '(((C)x64)x64)x64', { toString: 1 }, { valueOf: 1, toString: () => '3' }, Object.create(null)];
 function junk(r, depth = 0) {
   const k = r();
   if (k < 0.45 || depth > 3) return pick(r, JUNK);
