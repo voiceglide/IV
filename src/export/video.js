@@ -13,6 +13,13 @@ const nextTurn = () => new Promise(r => { if (!turn) { setTimeout(r, 0); return;
 
 /** Thrown when the person cancels. */
 export class ExportCancelled extends Error { constructor() { super('Export cancelled.'); this.name = 'AbortError'; } }
+/** Settles with `p`, or rejects with ExportCancelled the moment the signal aborts (work that cannot be stopped keeps running unseen). */
+export const abortable = (p, signal) => !signal ? p : new Promise((resolve, reject) => {
+  if (signal.aborted) { p.catch(() => {}); reject(new ExportCancelled()); return; }
+  const on = () => reject(new ExportCancelled());
+  signal.addEventListener('abort', on, { once: true });
+  p.then(v => { signal.removeEventListener('abort', on); resolve(v); }, e => { signal.removeEventListener('abort', on); reject(e); });
+});
 const check = signal => { if (signal && signal.aborted) throw new ExportCancelled(); };
 
 /** A plain-English message for whatever went wrong inside the encoders. */
@@ -104,6 +111,11 @@ async function openSink() {
     };
   }
 }
+/** Remove the private file behind the video on screen (it no longer belongs to the open project). */
+export async function releaseExport() {
+  const name = liveName; liveName = null; if (!name) return;
+  try { const nav = /** @type {any} */(globalThis.navigator), dir = await nav.storage.getDirectory(); await dir.removeEntry(name); } catch (e) { /* already gone, or no private storage */ }
+}
 const closeQuietly = enc => { try { if (enc && enc.state !== 'closed') enc.close(); } catch (e) { /* already closed */ } };
 
 async function exportFrames(song, o, vcfg, ainfo) {
@@ -112,9 +124,9 @@ async function exportFrames(song, o, vcfg, ainfo) {
   // the fonts must be loaded before the first frame, or the first frames would be drawn in a fallback font
   if (document.fonts && document.fonts.load) { try { await Promise.all(['700', '800', '900'].map(wt => document.fonts.load(`${wt} 100px Inter`))); await document.fonts.ready; } catch (e) { /* draw with what is there */ } }
   check(signal);
-  const renderer = createRenderer(document.createElement('canvas'), { w: W, h: H, theme: o.theme });
+  const renderer = createRenderer(document.createElement('canvas'), { w: W, h: H, theme: o.theme, readback: true });
   onStatus('Rendering audio…', -1);
-  const ab = await renderLoop(song, SR);
+  const ab = await abortable(renderLoop(song, SR), signal); // the offline render cannot be stopped, but the export stops waiting for it at once
   check(signal);
   if (peakOf(ab) < 1e-4) throw new Error('the sound track came out silent');
   // The loop lasts exactly as long as the sound (a whole number of samples). The frame count is rounded from 30 fps, then the frame rate is
@@ -150,7 +162,7 @@ async function exportFrames(song, o, vcfg, ainfo) {
       while (ae.encodeQueueSize > 20) await new Promise(r => setTimeout(r, 2));
       if ((i / step) % 20 === 19) await nextTurn();
     }
-    await ae.flush(); closeQuietly(ae); if (fail) throw fail; if (!aOut.length) throw new Error('no audio was encoded');
+    await abortable(ae.flush(), signal); closeQuietly(ae); if (fail) throw fail; if (!aOut.length) throw new Error('no audio was encoded');
     // drop the encoder's padding: frames that start after the loop ended; the last kept frame is cut short in the file's timing
     const endUs = Math.round(D * 1e6);
     for (const a of aOut) if (a.ts < endUs) muxer.addAudioChunkRaw(a.data, /** @type {any} */(a.type), a.ts, Math.min(a.dur, endUs - a.ts), a.meta);
@@ -165,15 +177,17 @@ async function exportFrames(song, o, vcfg, ainfo) {
       const vf = makeFrame(renderer.canvas, Math.round(f * fdur * 1e6), Math.round(fdur * 1e6));
       try { ve.encode(vf, { keyFrame: f % keyEvery === 0 }); } finally { vf.close(); }
       while (ve.encodeQueueSize > 6) { check(signal); await new Promise(r => setTimeout(r, 2)); }
-      if (f % 2 === 1) { if (f % 10 === 9) onStatus('Rendering video…', f / N); await nextTurn(); } // let the page breathe: no long stretch without a turn for the browser
+      if (f % 10 === 9) onStatus('Rendering video…', f / N);
+      await nextTurn(); // a turn for the browser after every frame: input and painting are never held up for more than one frame's work
     }
-    await ve.flush(); closeQuietly(ve); if (fail) throw fail; muxer.finalize();
+    await abortable(ve.flush(), signal); closeQuietly(ve); if (fail) throw fail; muxer.finalize();
   } catch (e) { closeQuietly(ae); closeQuietly(ve); await sink.discard(); throw e; }
   let fin;
   try { fin = await sink.finish(); } catch (e) { await sink.discard(); throw e; }
   const { blob } = fin;
   onStatus('Checking the sound…', -1);
-  const peak = await decodedPeak(engine.unlock(), await fin.bytes());
+  // decoding the whole file takes seconds on a long clip (and the loop's own sound was already checked before encoding): only short clips are decoded
+  const peak = blob.size > 24e6 ? null : await abortable(decodedPeak(engine.unlock(), await fin.bytes()), signal).catch(async e => { await sink.discard(); throw e; });
   if (peak !== null && peak < 1e-4) { await sink.discard(); throw new Error('the sound track came out silent'); }
   sink.commit();
   return { blob, ext: 'mp4', desc: `MP4 · ${W}×${H} · ${(N / D).toFixed(2)} fps · ${ainfo.mux === 'aac' ? 'AAC' : 'Opus'} sound` };
@@ -186,7 +200,8 @@ function exportRealtime(song, o) {
     if (!globalThis.MediaRecorder || !cv.captureStream) { reject(new Error('This browser cannot record video. Try a recent Chrome, Edge or Safari.')); return; }
     const tap = engine.tap();
     const stream = new MediaStream([...cv.captureStream(FPS).getVideoTracks(), ...tap.stream.getAudioTracks()]);
-    const mime = ['video/mp4;codecs=avc1.42E01E,mp4a.40.2', 'video/mp4', 'video/webm'].find(m => MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(m)) || '';
+    // WebM first: Chrome accepts an mp4 type but then writes VP9 into it, which many players refuse. Safari has no WebM and gets real H.264 MP4.
+    const mime = ['video/webm;codecs=vp9,opus', 'video/webm', 'video/mp4;codecs=avc1.42E01E,mp4a.40.2', 'video/mp4'].find(m => MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(m)) || '';
     const rec = new MediaRecorder(stream, mime ? { mimeType: mime, videoBitsPerSecond: 8e6 } : {});
     /** @type {Blob[]} */ const chunks = [];
     let cancelled = false;
@@ -195,8 +210,13 @@ function exportRealtime(song, o) {
     rec.onstop = () => {
       tap.release();
       if (cancelled) { reject(new ExportCancelled()); return; }
-      const type = rec.mimeType || 'video/webm', ext = type.includes('mp4') ? 'mp4' : 'webm';
-      resolve({ blob: new Blob(chunks, { type }), ext, desc: `${ext.toUpperCase()} · recorded in real time` });
+      const blob = new Blob(chunks, { type: rec.mimeType || 'video/webm' });
+      // name the file by what it really is: an EBML header means WebM, anything else was written by the MP4 muxer
+      blob.slice(0, 4).arrayBuffer().then(b => new Uint8Array(b)).catch(() => new Uint8Array(4)).then(b => {
+        const webm = b[0] === 0x1a && b[1] === 0x45 && b[2] === 0xdf && b[3] === 0xa3, ext = webm ? 'webm' : 'mp4';
+        resolve({ blob: new Blob([blob], { type: webm ? 'video/webm' : 'video/mp4' }), ext,
+          desc: `${webm ? 'WebM file (not an MP4)' : 'MP4'} · recorded in real time, so its length is only approximate (a few hundredths of a second off)` });
+      });
     };
     // the first frame is on the canvas and the sound is already playing when recording starts, so there is no silent pre-roll
     renderer.draw(song, song.vs); engine.play(song, song.vs); rec.start(500);

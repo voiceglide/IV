@@ -26,7 +26,7 @@ export function layoutFor(w, h) {
   const ratio = ratioOf(w, h);
   if (ratio === '16:9') { // a left panel with the chord name and header text, the staff, chord lane and piano on the right
     const k = h / 1080 * 0.8, sx0 = 0.36 * w, sx1 = w, sw = sx1 - sx0;
-    return { ratio, k, cx: 0.17 * w, hookMaxW: 0.3 * w, kicker: 0.12 * h, hook1: 0.19 * h, hookLh: 72 * k, name: 0.56 * h, numRow: 0.66 * h, chordSize: 250 * k,
+    return { ratio, k, cx: 0.17 * w, hookMaxW: 0.26 * w, kicker: 0.12 * h, hook1: 0.19 * h, hookLh: 72 * k, name: 0.56 * h, numRow: 0.66 * h, chordSize: 250 * k,
       sx0, sx1, staffTop: 0.1 * h, staffBot: 0.62 * h, playX: sx0 + 0.21 * sw, UB: [0.12 * h, 0.5 * h], BB: [0.54 * h, 0.6 * h], sp: 0.3 * sw,
       lx0: sx0 + 0.03 * sw, lx1: sx1 - 0.03 * sw, laneY: 0.665 * h, laneH: 0.085 * h, kx0: sx0 + 0.05 * sw, kx1: sx1 - 0.05 * sw, kbY: 0.8 * h, kbH: 0.13 * h,
       handleX: 0.17 * w, handle: 0.9 * h };
@@ -40,7 +40,7 @@ export function layoutFor(w, h) {
   const k = w / 1080; // 9:16
   return { ratio, k, cx: 0.5 * w, hookMaxW: 0.76 * w, kicker: 0.102 * h, hook1: 0.13 * h, hookLh: 72 * k, name: 0.2917 * h, numRow: 0.331 * h, chordSize: 250 * k,
     sx0: 0, sx1: w, staffTop: 0.3594 * h, staffBot: 0.6719 * h, playX: 0.305 * w, UB: [0.3719 * h, 0.5656 * h], BB: [0.6094 * h, 0.6573 * h], sp: 0.3056 * w,
-    lx0: 0.037 * w, lx1: 0.963 * w, laneY: 0.683 * h, laneH: 0.0417 * h, kx0: 0.11 * w, kx1: 0.89 * w, kbY: 0.757 * h, kbH: 0.0781 * h, handleX: 0.5 * w, handle: 0.8542 * h };
+    lx0: 0.037 * w, lx1: 0.963 * w, laneY: 0.683 * h, laneH: 0.0417 * h, kx0: 0.11 * w, kx1: 0.89 * w, kbY: 0.757 * h, kbH: 0.0781 * h, handleX: 0.5 * w, handle: 0.872 * h };
 }
 
 // ---------- easing ----------
@@ -100,12 +100,12 @@ function timeAxis(song, sp) {
 
 /**
  * @param {HTMLCanvasElement|OffscreenCanvas} cv
- * @param {{w?:number, h?:number, theme?:string|import('./theme.js').Theme}} [opts]
+ * @param {{w?:number, h?:number, theme?:string|import('./theme.js').Theme, readback?:boolean}} [opts] readback: the pixels are read after every frame (video export)
  */
 export function createRenderer(cv, opts = {}) {
   let w = opts.w || W, h = opts.h || H, th = resolveTheme(opts.theme), L = layoutFor(w, h);
   cv.width = w; cv.height = h;
-  const c = /** @type {CanvasRenderingContext2D} */(cv.getContext('2d'));
+  const c = /** @type {CanvasRenderingContext2D} */(cv.getContext('2d', opts.readback ? { willReadFrequently: true } : undefined));
   const mk = () => typeof document !== 'undefined' ? Object.assign(document.createElement('canvas'), { width: w, height: h }) : new OffscreenCanvas(w, h);
   let grain = /** @type {any} */(null), staff = /** @type {any} */(null), staffFor = /** @type {any} */(null), axis = /** @type {any} */(null);
   const ia = a => `rgba(${th.inkRGB},${a})`;
@@ -132,9 +132,33 @@ export function createRenderer(cv, opts = {}) {
   }
 
   // ---------- drawing helpers ----------
-  const font = (wt, px) => { c.font = `${wt} ${Math.round(px * 10) / 10}px Inter, system-ui, sans-serif`; };
+  const font = (wt, px) => { c.font = `${wt} ${Math.round(px * 10) / 10}px Inter, system-ui, "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif`; };
   function rr(x, y, ww, hh, r) { c.beginPath(); if (c.roundRect) c.roundRect(x, y, ww, hh, r); else c.rect(x, y, ww, hh); }
-  function spaced(txt, x, y, sp, align) { let tw = 0; for (const ch of txt) tw += c.measureText(ch).width + sp; tw -= sp; let xx = align === 'center' ? x - tw / 2 : align === 'right' ? x - tw : x; c.textAlign = 'left'; for (const ch of txt) { c.fillText(ch, xx, y); xx += c.measureText(ch).width + sp; } return tw; }
+  const RTL = /[\u0590-\u08FF\uFB1D-\uFDFF\uFE70-\uFEFF]/;
+  function spaced(txt, x, y, sp, align) {
+    if (RTL.test(txt)) { c.textAlign = align; c.fillText(txt, x, y); return c.measureText(txt).width; }
+    /* letter by letter would break the joined letters of Arabic and the order of Hebrew, so those are drawn whole */
+     let tw = 0; for (const ch of txt) tw += c.measureText(ch).width + sp; tw -= sp; let xx = align === 'center' ? x - tw / 2 : align === 'right' ? x - tw : x; c.textAlign = 'left'; for (const ch of txt) { c.fillText(ch, xx, y); xx += c.measureText(ch).width + sp; } return tw; }
+  // ---------- text that always fits ----------
+  // fit(): the largest size in [minPx, px] at which `txt` fits `maxW`; at the minimum the text is cut with an ellipsis. Results are cached.
+  const fitCache = new Map();
+  function fit(txt, wt, px, minPx, maxW, sp = 0) {
+    const key = `${wt}|${px}|${minPx}|${maxW}|${sp}|${txt}`, hit = fitCache.get(key); if (hit) return hit;
+    const width = (t, s) => { font(wt, s); return c.measureText(t).width + sp * (s / px) * Math.max(0, [...t].length - 1); };
+    let size = px, t = txt;
+    const w0 = width(t, px); if (w0 > maxW) size = Math.max(minPx, px * maxW / w0 * 0.995);
+    if (width(t, size) > maxW) { const ch = [...t]; while (ch.length > 1 && width(ch.join('').trimEnd() + '…', size) > maxW) ch.pop(); t = ch.join('').trimEnd() + '…'; }
+    if (fitCache.size > 300) fitCache.clear();
+    const out = { txt: t, size }; fitCache.set(key, out); return out;
+  }
+  // wrapLines(): greedy word wrap at one size into at most `maxLines` lines; whatever does not fit is ellipsized at the end of the last line
+  function wrapLines(txt, wt, px, maxW, maxLines) {
+    font(wt, px); const words = txt.split(/\s+/).filter(Boolean), lines = []; let cur = '';
+    for (const wd of words) { const t = cur ? cur + ' ' + wd : wd; if (!cur || c.measureText(t).width <= maxW) cur = t; else { lines.push(cur); cur = wd; } }
+    if (cur) lines.push(cur);
+    if (lines.length > maxLines) { lines.length = maxLines; lines[maxLines - 1] += '…'; }
+    return lines.map(l => fit(l, wt, px, px, maxW).txt);
+  }
   function chordMetrics(ch, size) {
     font(800, size); const rw = c.measureText(ch.letter).width;
     font(700, size * 0.46); const aw = ch.acc ? c.measureText(ch.acc).width : 0;
@@ -159,15 +183,36 @@ export function createRenderer(cv, opts = {}) {
       if (best) return best.l; }
     return lines;
   }
+  // Hook / question block: tries full size on two lines, then smaller on up to three, never taller than the room above the chord name;
+  // a word wider than the column shrinks the type, and at the smallest size it is cut with an ellipsis. Cached per text and size.
+  const richCache = new Map();
+  function layoutRich(txt, size, lh) {
+    const key = `${txt}|${size}|${lh}|${L.hookMaxW}|${L.name}`, hit = richCache.get(key); if (hit) return hit;
+    const maxW = L.hookMaxW, room = L.name - L.chordSize * 0.74 - L.hook1;
+    let out = null;
+    for (const sc of [1, 0.78, 0.64, 0.52]) {
+      const s = size * sc, l = lh * (sc < 1 ? 0.84 : 1), lines = richLines(txt, s, maxW); font(800, s);
+      const wide = lines.some(ln => ln.some(wd => c.measureText(wd.t).width > maxW));
+      const maxLines = Math.max(1, Math.min(sc === 1 ? 2 : 3, Math.floor((room - 0.25 * s) / l) + 1));
+      if (!wide && lines.length <= maxLines) { out = { size: s, lh: l, lines }; break; }
+      if (sc === 0.52) { // the smallest size: cut the words that are too wide and the lines that do not fit
+        const cut = lines.slice(0, maxLines).map(ln => ln.map(wd => ({ ...wd, t: fit(wd.t, 800, s, s, maxW).txt })));
+        if (lines.length > maxLines) { const last = cut[maxLines - 1], wd = last[last.length - 1]; if (!wd.t.endsWith('…')) wd.t = fit(wd.t + '…', 800, s, s, maxW).txt; }
+        out = { size: s, lh: l, lines: cut };
+      }
+    }
+    if (richCache.size > 100) richCache.clear();
+    richCache.set(key, out); return out;
+  }
   function drawRich(txt, size, y1, lh, t, alpha, drift) {
     if (alpha <= 0 || !txt) return;
-    let lines = richLines(txt, size, L.hookMaxW);
-    if (lines.length > 2) { size *= 0.78; lh *= 0.82; lines = richLines(txt, size, L.hookMaxW); } // three lines: smaller, so they stay above the chord name
+    const lay = layoutRich(txt, size, lh), lines = lay.lines, rtl = RTL.test(txt); size = lay.size; lh = lay.lh;
     font(800, size); const sp = c.measureText(' ').width; let wi = 0;
     c.save(); c.textAlign = 'left';
     lines.forEach((ln, j) => {
       const tw = ln.reduce((a, wd, q) => a + c.measureText(wd.t).width + (q ? sp : 0), 0); let x = L.cx - tw / 2;
-      for (const wd of ln) { const u = easeOut((t - wi * 0.06) / 0.32); c.globalAlpha = alpha * u; c.fillStyle = wd.pink ? th.pink : th.ink;
+      // right-to-left text: the first word of the line stands at its right end
+      for (const wd of rtl ? [...ln].reverse() : ln) { const u = easeOut((t - wi * 0.06) / 0.32); c.globalAlpha = alpha * u; c.fillStyle = wd.pink ? th.pink : th.ink;
         c.fillText(wd.t, x, y1 + j * lh + 16 * L.k * (1 - u) - drift); x += c.measureText(wd.t).width + sp; wi++; }
     });
     c.restore();
@@ -186,16 +231,23 @@ export function createRenderer(cv, opts = {}) {
   // ---------- header: hook / question / reveal text, then the chord name ----------
   // Layers over one loop (phase p): the hook (or, without one, the quiet meta line) at the start; the question, then the reveal in the last
   // seconds. The late layer fades out just before the wrap and the first layer fades back in, so frame `cycle` equals frame 0.
+  // Timeline: hook (or the quiet meta line) -> question -> reveal, each with its own window. The question and the reveal sit at the end of
+  // the loop, the reveal last. When the loop is too short for all of them at full length (they need hook 2.45 s + question 2.2 s + reveal 2.7 s),
+  // every window is scaled by the same factor, so each still shows and frame 0 is always the hook (or the meta line), never a late layer.
   function headerLayers(song, p) {
-    const cyc = song.cycle, left = cyc - p;
-    const late = song.reveal && left <= REVEAL ? 'reveal' : song.question && left <= song.qSec ? 'question' : null;
+    const cyc = song.cycle, left = cyc - p, qd = song.question ? song.qSec : 0, rd = song.reveal ? REVEAL : 0, hd = song.hook ? HOOK_OFF : 0;
+    const f = Math.min(1, cyc * 0.94 / Math.max(0.001, hd + qd + rd)), rStart = cyc - rd * f, qStart = cyc - (qd + rd) * f;
+    const late = rd && p >= rStart ? 'reveal' : qd && p >= qStart ? 'question' : null;
     let lateA = 0, lateT = 0;
-    if (late) { const dur = late === 'reveal' ? REVEAL : song.qSec; lateT = dur - left; lateA = easeOut(lateT / (late === 'reveal' ? 0.25 : 0.2)) * clamp((left - WRAP_IN) / (LATE_OUT - WRAP_IN)); }
-    const rise = clamp((p - (cyc - WRAP_IN)) / WRAP_IN);              // the first layer comes back just before the wrap
-    const early = late && left > WRAP_IN ? 0 : 1;
+    if (late) {
+      const start = late === 'reveal' ? rStart : qStart, inD = (late === 'reveal' ? 0.25 : 0.2) * f;
+      lateT = (p - start) / f; lateA = easeOut((p - start) / inD) * clamp((left - WRAP_IN * f) / ((LATE_OUT - WRAP_IN) * f));
+      if (late === 'question' && rd) lateA *= clamp((rStart - p) / (0.15 * f)); // the question gives way to the reveal
+    }
+    const rise = clamp((p - (cyc - WRAP_IN * f)) / (WRAP_IN * f)); // the first layer comes back just before the wrap
     let hookA = 0, drift = 0;
-    if (song.hook) { if (p < HOOK_ON) hookA = 1; else if (p < HOOK_OFF) { hookA = 1 - (p - HOOK_ON) / (HOOK_OFF - HOOK_ON); drift = 8 * (1 - hookA); } if (cyc - p <= WRAP_IN) hookA = Math.max(hookA, rise); hookA *= early; }
-    const metaA = song.hook ? easeOut((p - HOOK_OFF) / 0.3) * (1 - hookA) * (late ? 0 : 1) : late ? rise * early : 1;
+    if (song.hook) { if (p < HOOK_ON * f) hookA = 1; else if (p < HOOK_OFF * f) { hookA = 1 - (p - HOOK_ON * f) / ((HOOK_OFF - HOOK_ON) * f); drift = 8 * (1 - hookA); } if (left <= WRAP_IN * f) hookA = Math.max(hookA, rise); }
+    const metaA = song.hook ? easeOut((p - HOOK_OFF * f) / (0.3 * f)) * (1 - hookA) * (late ? 0 : 1) : late ? rise : 1;
     return { late, lateA, lateT, hookA, drift, metaA };
   }
   function drawHeader(song, now, i, since) {
@@ -206,12 +258,17 @@ export function createRenderer(cv, opts = {}) {
     if (HL.late === 'question' && HL.lateA > 0) { font(800, 34 * k); c.globalAlpha = HL.lateA; c.fillStyle = th.pink; spaced('YOUR TURN', L.cx, L.kicker, 5 * k, 'center'); drawRich(song.question, 64 * k, L.hook1, L.hookLh, HL.lateT + 0.3, HL.lateA, 0); }
     if (HL.late === 'reveal' && HL.lateA > 0) {
       c.globalAlpha = HL.lateA; font(800, 34 * k); c.fillStyle = th.pink; spaced('IT WAS', L.cx, L.kicker, 6 * k, 'center');
-      const parts = song.reveal.split(/\s+[—–-]\s+/); font(900, 70 * k); c.fillStyle = th.ink; c.textAlign = 'center';
-      c.fillText(parts[0], L.cx, L.hook1 + 10 * k * (1 - HL.lateA)); if (parts[1]) { font(600, 42 * k); c.fillStyle = ia(0.62); c.fillText(parts.slice(1).join(' — '), L.cx, L.hook1 + 62 * k); }
+      const parts = song.reveal.split(/\s+[—–-]\s+/), maxW = L.hookMaxW, room = L.name - L.chordSize * 0.74 - L.hook1;
+      // the answer shrinks to fit one line; a very long one wraps to two lines at a smaller size and then ends in an ellipsis
+      let main = [fit(parts[0], 900, 70 * k, 44 * k, maxW)], msz = main[0].size, lh = msz * 1.08;
+      if (main[0].txt !== parts[0]) { msz = 42 * k; lh = msz * 1.1; main = wrapLines(parts[0], 900, msz, maxW, Math.max(1, Math.min(2, Math.floor((room - 0.25 * msz) / lh) + 1))).map(t => ({ txt: t, size: msz })); }
+      c.fillStyle = th.ink; c.textAlign = 'center';
+      main.forEach((m, j) => { font(900, m.size); c.fillText(m.txt, L.cx, L.hook1 + j * lh + 10 * k * (1 - HL.lateA)); });
+      if (parts[1]) { const sub = fit(parts.slice(1).join(' — '), 600, 42 * k, 28 * k, maxW); font(600, sub.size); c.fillStyle = ia(0.62); c.fillText(sub.txt, L.cx, L.hook1 + (main.length - 1) * lh + 62 * k); }
     }
     if (HL.metaA > 0) { // quiet meta line: section and key
-      c.globalAlpha = HL.metaA; font(800, 40 * k); c.fillStyle = th.meta;
-      spaced([ch.section, keyName(song.key, song.sharps)].filter(Boolean).join('   ·   ').toUpperCase(), L.cx, L.hook1, 4 * k, 'center');
+      const meta = fit([ch.section, keyName(song.key, song.sharps)].filter(Boolean).join('   ·   ').toUpperCase(), 800, 40 * k, 24 * k, L.hookMaxW, 4 * k);
+      c.globalAlpha = HL.metaA; font(800, meta.size); c.fillStyle = th.meta; spaced(meta.txt, L.cx, L.hook1, 4 * k * meta.size / (40 * k), 'center');
     }
     // chord name: full size from the first frame (the header text sits above it); a small settle on each change
     const pop = 1 + 0.06 * Math.sin(Math.PI * clamp(since / 0.2));
@@ -342,7 +399,7 @@ export function createRenderer(cv, opts = {}) {
     const { i, since } = clockOf(song, now);
     if (song.chords[i].strong && since >= 0 && since < 0.1) { c.fillStyle = rgba(th.pink, 0.03); c.fillRect(0, 0, w, h); }
     drawHeader(song, now, i, since); drawStaff(song, now, i, since); drawLane(song, now, i, since); drawPiano(song, now, i, since);
-    if (song.watermark) { c.save(); font(700, 38 * L.k); c.fillStyle = ia(0.62); c.textAlign = 'center'; c.fillText(song.watermark, L.handleX, L.handle); c.restore(); }
+    if (song.watermark) { const wm = fit(song.watermark, 700, 38 * L.k, 22 * L.k, L.hookMaxW); c.save(); font(700, wm.size); c.fillStyle = ia(0.62); c.textAlign = 'center'; c.fillText(wm.txt, L.handleX, L.handle); c.restore(); }
   }
 
   function rebuild() { grain = null; staff = null; staffFor = null; axis = null; }
@@ -377,7 +434,7 @@ export function createRenderer(cv, opts = {}) {
     /** Change the frame size (aspect ratio) and/or the theme; the canvas is resized. */
     configure(o = {}) { if (o.w) w = o.w; if (o.h) h = o.h; if (o.theme) th = resolveTheme(o.theme); L = layoutFor(w, h); cv.width = w; cv.height = h; rebuild(); },
     /** What the header shows at `now` (for tests): the chord label. */
-    debug(song, now) { const { i } = clockOf(song, now); return { chord: song.chords[i].label }; },
+    debug(song, now) { const { i } = clockOf(song, now), HL = headerLayers(song, phaseOf(song, now)); return { chord: song.chords[i].label, layer: HL.late || (HL.hookA > 0 ? 'hook' : 'meta'), alpha: HL.late ? HL.lateA : HL.hookA > 0 ? HL.hookA : HL.metaA }; },
     get layout() { return L; },
     get w() { return w; }, get h() { return h; },
     canvas: cv,

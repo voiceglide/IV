@@ -14,3 +14,10 @@
 .xnote{font-size:13px;line-height:1.4;color:var(--muted)}
 .xmore>summary{cursor:pointer;min-height:44px;display:flex;align-items:center;font-size:15px;font-weight:700;color:var(--ink)}
 .xmore[open]>summary{margin-bottom:8px}
+.xpicks{display:grid;gap:0}
+/* a phone held sideways: the pickers sit side by side and the note goes, so Save, Cancel, the progress and the file's buttons stay on screen */
+@media (max-height:520px) and (orientation:landscape){
+  .xpicks{grid-template-columns:1fr 1fr;gap:0 12px}
+  .xseg span{min-height:38px}
+  .xnote{display:none}
+}
