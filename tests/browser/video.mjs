@@ -65,7 +65,9 @@ export async function run(browser, url, r) {
   const dir = mkdtempSync(join(tmpdir(), 'vid-')), file = join(dir, 'out.mp4');
   writeFileSync(file, Buffer.from(out.b64, 'base64'));
   let probe = null;
-  try { probe = JSON.parse(execFileSync('ffprobe', ['-v', 'error', '-count_frames', '-show_streams', '-show_format', '-of', 'json', file], { encoding: 'utf8' })); } catch (e) { console.log('(ffprobe not available: duration checks skipped)'); }
+  const isMp4 = !/WebM/.test(out.status); // browsers without an H.264 encoder (stock Chromium on Linux) use the real-time WebM fallback
+  if (!isMp4) console.log('     (no H.264 encoder here: the real-time WebM fallback was used, MP4 duration and colour checks skipped)');
+  if (isMp4) try { probe = JSON.parse(execFileSync('ffprobe', ['-v', 'error', '-count_frames', '-show_streams', '-show_format', '-of', 'json', file], { encoding: 'utf8' })); } catch (e) { console.log('(ffprobe not available: duration checks skipped)'); }
   if (probe) {
     const vs = probe.streams.find(s => s.codec_type === 'video'), as = probe.streams.find(s => s.codec_type === 'audio');
     const fps = eval(vs.avg_frame_rate), vdur = +vs.nb_read_frames / fps, adur = +as.duration;
@@ -83,7 +85,9 @@ export async function run(browser, url, r) {
     await page.waitForSelector('#exportSheet button:has-text("Cancel"):visible');
     await page.waitForTimeout(ms);
     const t0 = Date.now();
-    await page.click('#exportSheet button:has-text("Cancel")');
+    // the export may finish just before the click (fast machines, the real-time fallback): then there is nothing to cancel at this point
+    const clicked = await page.click('#exportSheet button:has-text("Cancel")', { timeout: 1500 }).then(() => true, () => false);
+    if (!clicked) { console.log(`     (the export finished before ${ms} ms on this machine: that cancel point is skipped)`); await page.waitForFunction(() => !window.__app.busy(), null, { timeout: 20000, polling: 50 }); continue; }
     await page.waitForFunction(() => !window.__app.busy(), null, { timeout: 20000, polling: 50 });
     const took = Date.now() - t0;
     r.check(took < 2000, `video: Cancel ${ms} ms into the export releases the app within 2 s`, `${took} ms`);
@@ -103,7 +107,7 @@ export async function run(browser, url, r) {
   r.check(await page.evaluate(() => document.activeElement.id === 'exportBtn'), 'video: after Escape the focus is back on the Export button', await page.evaluate(() => document.activeElement.tagName + '#' + document.activeElement.id));
   // memory: where private storage exists the video is a file there; cancelled exports leave nothing behind
   const files = await page.evaluate(async () => { try { const d = await navigator.storage.getDirectory(), n = []; for await (const [k] of /** @type {any} */(d).entries()) n.push(k); return n; } catch (e) { return null; } });
-  if (files) r.check(files.filter(n => n.startsWith('iv-export-')).length === 1, 'video: the export is kept as one private file, cancelled ones leave none', files.join());
+  if (files && isMp4) r.check(files.filter(n => n.startsWith('iv-export-')).length === 1, 'video: the export is kept as one private file, cancelled ones leave none', files.join());
   await context.close();
   await pickers(browser, url, r);
   await lifecycle(browser, url, r);

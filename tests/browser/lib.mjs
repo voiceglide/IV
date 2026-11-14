@@ -46,6 +46,8 @@ export function reporter() {
 /** Open the app in a fresh context; page errors, console errors and any request that leaves the test server are recorded. */
 export async function openApp(browser, url, r, opts = {}) {
   const context = await browser.newContext({ viewport: opts.viewport || { width: 1280, height: 800 }, isMobile: !!opts.mobile, hasTouch: !!opts.mobile, serviceWorkers: opts.serviceWorkers || 'block' });
+  // NO_H264=1 reproduces stock Chromium without an H.264 encoder (the GitHub runner): the app must use its real-time WebM fallback
+  if (process.env.NO_H264) await context.addInitScript(() => { const w = /** @type {any} */(window); if (w.VideoEncoder) w.VideoEncoder.isConfigSupported = async () => ({ supported: false }); });
   const page = await context.newPage();
   page.on('pageerror', e => r.failures.push('page error: ' + e.message));
   page.on('console', m => { if (m.type() === 'error') r.failures.push('console error: ' + m.text()); });
