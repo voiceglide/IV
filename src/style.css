@@ -191,7 +191,7 @@ body.lock .app{pointer-events:none}
 
 /* a phone held upright or a narrow window: Melody is a sheet over the lower part of the screen, the preview keeps its size */
 @media (max-width:899px) and (min-height:561px){
-  .editp.overlay{position:fixed;left:0;right:0;bottom:0;margin:0 auto;max-width:520px;max-height:none;height:62vh;height:62dvh;z-index:15;border-radius:20px 20px 0 0;border:1px solid var(--edge);box-shadow:0 -10px 40px var(--shadow)}
+  .editp.overlay{position:fixed;left:0;right:0;bottom:0;margin:0 auto;max-width:520px;max-height:none;height:82vh;height:82dvh;z-index:15;border-radius:20px 20px 0 0;border:1px solid var(--edge);box-shadow:0 -10px 40px var(--shadow)}
   .editp.overlay #paneMelody .hint{display:none}
 }
 /* landscape phones and short windows: preview on the left, controls on the right */

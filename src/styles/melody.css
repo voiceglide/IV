@@ -9,11 +9,10 @@
 .mel-corner,.mel-head{position:sticky;top:0;z-index:3;background:var(--card)}
 .mel-corner{left:0;z-index:5;border-right:1.5px solid var(--edge);border-bottom:1.5px solid var(--edge)}
 /* piano keys */
-.mel-name{position:sticky;left:0;z-index:2;display:flex;align-items:center;justify-content:flex-end;padding-right:6px;font-size:12px;font-weight:800;cursor:pointer;border-right:1.5px solid var(--edge);border-bottom:1px solid var(--line);user-select:none;-webkit-user-select:none}
+.mel-name{position:sticky;left:0;z-index:2;display:flex;align-items:center;justify-content:flex-end;padding-right:6px;font-size:13px;font-weight:800;cursor:pointer;border-right:1.5px solid var(--edge);border-bottom:1px solid var(--line);user-select:none;-webkit-user-select:none}
 .mel-name.white{background:#fffdf8;color:#4a4036}
-.mel-name.black{background:#2b2520;color:#f6efe3;margin-right:14px;border-radius:0 6px 6px 0;border-right:0;border-bottom-color:#4a4036;justify-content:flex-end}
-.mel-name.black{width:calc(100% - 14px)}
-.mel-name.c{color:#2b2520;font-size:13px}
+.mel-name.black{background:linear-gradient(90deg,#fffdf8 0 38%,#2b2520 38%);color:#f6efe3;border-bottom-color:transparent;border-right:0}
+.mel-name.c{color:#2b2520;font-weight:900}
 .mel-name.white.tonic{box-shadow:inset 4px 0 0 var(--pink)}
 .mel-name:active{filter:brightness(.85)}
 .mel-head{display:flex;align-items:center;padding-left:6px;font-size:13px;font-weight:800;white-space:nowrap;overflow:visible;border-bottom:1.5px solid var(--edge)}
@@ -29,7 +28,7 @@
 .mel-cell.tone::after{content:"";position:absolute;right:6px;top:50%;width:6px;height:6px;margin-top:-3px;border-radius:50%;background:var(--edge);opacity:.7}
 .mel-cell:focus-visible{outline:3px solid var(--pink);outline-offset:-3px;z-index:1}
 /* notes: bars as long as the note */
-.mel-cell.on{background:var(--pink);border-right-color:transparent;border-bottom-color:transparent;color:#fff;font-size:11px;font-weight:800;line-height:1;display:flex;align-items:center;padding-left:6px;margin:3px 0}
+.mel-cell.on{overflow:hidden;background:var(--pink);border-right-color:transparent;border-bottom-color:transparent;color:#fff;font-size:11px;font-weight:800;line-height:1;display:flex;align-items:center;padding-left:6px;margin:3px 0}
 .mel-cell.on::after{display:none}
 .mel-cell.on.start{border-radius:9px 0 0 9px}
 .mel-cell.on.end{border-radius:0 9px 9px 0}
@@ -38,3 +37,5 @@
 .mel-playhead{position:absolute;top:0;bottom:0;left:0;width:2px;background:var(--ink);opacity:.6;pointer-events:none;z-index:4}
 #paneMelody{display:flex;flex-direction:column;gap:8px}
 #paneMelody[hidden]{display:none!important}
+
+.mel-zoom{justify-content:flex-end}
