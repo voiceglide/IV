@@ -34,6 +34,7 @@ export async function run(browser, url, r) {
   }
 
   // a real export
+  await page.evaluate(() => { const w = /** @type {any} */(window); w.__long = []; new PerformanceObserver(l => { for (const e of l.getEntries()) w.__long.push(e.duration); }).observe({ entryTypes: ['longtask'] }); });
   await page.click('#exportBtn'); await page.waitForSelector('#exportSheet');
   await page.click('#exportSheet button:has-text("Video")');
   await page.waitForSelector('#exportSheet video', { timeout: 240000 });
@@ -43,6 +44,9 @@ export async function run(browser, url, r) {
     const app = /** @type {any} */(window).__app; return { b64: btoa(bin), cycle: app.song().cycle, status: document.querySelector('#exportSheet .status').textContent };
   });
   r.check(/Video ready/.test(out.status), 'video: the export finishes', out.status);
+  const long = await page.evaluate(() => /** @type {any} */(window).__long);
+  const over100 = long.filter(d => d > 100).length, over250 = long.filter(d => d > 250).length; // timings vary with machine load: only real freezes fail
+  r.check(Math.max(0, ...long) < 1500 && over250 <= 3, 'video: the page is never blocked for long during the export', `longest task ${Math.round(Math.max(0, ...long))} ms, ${long.length} over 50 ms, ${over100} over 100 ms`);
   const dir = mkdtempSync(join(tmpdir(), 'vid-')), file = join(dir, 'out.mp4');
   writeFileSync(file, Buffer.from(out.b64, 'base64'));
   let probe = null;
@@ -53,7 +57,24 @@ export async function run(browser, url, r) {
     r.check(Math.abs(vdur - out.cycle) < 0.002, 'video: video length equals the loop length', `${vdur.toFixed(4)} s vs ${out.cycle.toFixed(4)} s`);
     r.check(adur - out.cycle > -0.002 && adur - out.cycle < 0.0215, 'video: sound length is within one audio frame of the loop', `${adur.toFixed(4)} s`);
     r.check(Math.abs(adur - vdur) < 0.0215, 'video: video and sound differ by less than one audio frame', `${(adur - vdur).toFixed(4)} s`);
+    console.log('     video stream:', vs.codec_name, vs.profile, vs.pix_fmt, 'range', vs.color_range, 'matrix', vs.color_space, 'transfer', vs.color_transfer, 'primaries', vs.color_primaries, '| audio:', as.codec_name);
+    r.check(vs.pix_fmt === 'yuv420p' && vs.color_space === 'bt709', 'video: limited-range BT.709 colour tags (not yuvj420p)', `${vs.pix_fmt} ${vs.color_range} ${vs.color_space}`);
     r.check(vs.width === 1080 && vs.height === 1920 && Math.abs(fps - 30) < 0.6, 'video: 1080×1920 at about 30 fps', `${vs.width}×${vs.height} @ ${fps.toFixed(3)}`);
   }
+
+  // cancel: the button works, nothing is saved, the buttons come back; closing the sheet also cancels
+  await page.click('#exportSheet button:has-text("Video")');
+  await page.waitForSelector('#exportSheet button:has-text("Cancel"):visible');
+  await page.waitForTimeout(1500);
+  await page.click('#exportSheet button:has-text("Cancel")');
+  await page.waitForFunction(() => /cancelled/i.test(document.querySelector('#exportSheet .status').textContent), null, { timeout: 20000 });
+  r.check(await page.evaluate(() => !window.__app.busy() && !document.querySelector('#exportSheet button:disabled')), 'video: after Cancel the sheet is usable again');
+  await page.click('#exportSheet button:has-text("Video")');
+  await page.waitForSelector('#exportSheet button:has-text("Cancel"):visible');
+  await page.waitForTimeout(800);
+  await page.keyboard.press('Escape');
+  await page.waitForFunction(() => !document.querySelector('#exportSheet'), null, { timeout: 5000 });
+  await page.waitForFunction(() => !window.__app.busy(), null, { timeout: 20000 });
+  r.check(true, 'video: the sheet closes while an export runs, and cancels it');
   await context.close();
 }

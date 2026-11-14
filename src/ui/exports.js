@@ -22,9 +22,11 @@ export function initExports(app) {
     const bar = h('i'), progress = h('div', { class: 'progress', hidden: true }, bar);
     const result = h('div', { class: 'stack', hidden: true });
     const list = h('div', { class: 'stack' });
-    const setBusy = on => { app.setBusy(on); list.querySelectorAll('button').forEach(b => { b.disabled = on; }); progress.hidden = !on; };
+    /** @type {AbortController|null} */ let job = null; // the running video export, if any
+    const cancel = h('button', { class: 'big ghost', type: 'button', text: 'Cancel', hidden: true, onClick: () => { if (job) { job.abort(); status.textContent = 'Cancelling…'; } } });
+    const setBusy = on => { app.setBusy(on); list.querySelectorAll('button').forEach(b => { b.disabled = on; }); progress.hidden = !on; cancel.hidden = !(on && job); };
     const onStatus = (text, p) => { status.textContent = text; progress.classList.toggle('wait', p < 0); bar.style.width = p < 0 ? '8%' : Math.max(4, Math.round(p * 100)) + '%'; };
-    const fail = (what, e) => { status.textContent = ''; toast(`${what} failed: ${e && e.message || e}. Nothing was lost; you can try again.`, { error: true }); };
+    const fail = (what, e) => { status.textContent = ''; toast(`${what} did not work: ${String(e && e.message || e).replace(/\.$/, '')}. Nothing was lost; you can try again.`, { error: true }); };
 
     function showVideo() {
       if (!video) { result.hidden = true; return; }
@@ -38,13 +40,16 @@ export function initExports(app) {
 
     list.append(
       item('Video', 'MP4, vertical 1080 × 1920, one seamless loop with sound', async () => {
-        setBusy(true);
+        job = new AbortController(); setBusy(true);
         try {
-          const out = await exportVideo({ song, renderer: app.renderer, engine: app.engine, onStatus });
+          const out = await exportVideo({ song, engine: app.engine, onStatus, signal: job.signal });
           if (video) URL.revokeObjectURL(video.url);
           video = { blob: out.blob, name: `${base}.${out.ext}`, url: URL.createObjectURL(out.blob) };
           status.textContent = `Video ready · ${(out.blob.size / 1048576).toFixed(1)} MB · ${out.desc}.`; showVideo();
-        } catch (e) { fail('The video export', e); } finally { setBusy(false); app.redraw(); }
+        } catch (e) {
+          if (e && e.name === 'AbortError') status.textContent = 'Export cancelled. Nothing was saved.';
+          else fail('The video export', e);
+        } finally { job = null; setBusy(false); app.redraw(); }
       }),
       item('Audio', 'WAV, 48 kHz stereo, one seamless loop', async () => {
         setBusy(true); onStatus('Rendering audio…', -1);
@@ -64,7 +69,9 @@ export function initExports(app) {
         saveBlob(new Blob([serializeProject(app.store.project)], { type: 'application/json' }), `${base}.json`);
         status.textContent = 'Project file saved to your downloads.';
       }));
-    openSheet({ title: 'Export', id: 'exportSheet', body: [list, progress, status, result], canClose: () => { if (app.busy()) { toast('Please wait for the export to finish.'); return false; } return true; } });
+    openSheet({ title: 'Export', id: 'exportSheet', body: [list, progress, cancel, status, result],
+      // closing the sheet while a video is being made cancels it; the quick exports (audio) are not worth interrupting
+      canClose: () => { if (!app.busy()) return true; if (job) { job.abort(); return true; } toast('Please wait for the export to finish.'); return false; } });
     showVideo();
   }
   document.getElementById('exportBtn').addEventListener('click', open);
