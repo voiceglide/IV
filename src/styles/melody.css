@@ -1,6 +1,13 @@
 /* Melody: a piano roll */
 .mel-bar{display:flex;gap:6px;align-items:center;min-height:44px}
-.mel-bar .mel-len{flex:1;min-width:0;font-size:13.5px;font-weight:700;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mel-bar .mel-len{flex:1 1 90px;min-width:0;font-size:13.5px;font-weight:700;color:var(--muted);line-height:1.25;overflow-wrap:anywhere}
+.mel-bar .mel-page{flex:0 1 auto;min-width:0;text-align:center;font-size:13.5px;font-weight:700;color:var(--muted);white-space:nowrap}
+.mel-bar .mel-gap{flex:1 1 0;min-width:0}
+.mel-bar .mel-break{flex:0 0 100%;height:0}
+.mel-bar button.turn svg{transform:rotate(90deg)}
+.mel-bar button.turn.flip svg{transform:rotate(-90deg)}
+.mel-bar button:disabled{opacity:.4}
+.mel-bar{flex-wrap:wrap}
 .mel-bar button{flex:none;min-width:44px;padding:0 12px;display:inline-flex;align-items:center;justify-content:center;font-size:17px}
 .mel-bar button.flip svg{transform:rotate(180deg)}
 .mel-scroll{overflow:auto;overscroll-behavior:contain;border:1.5px solid var(--edge);border-radius:12px;background:var(--field);max-width:100%;min-height:160px;flex:1}
@@ -35,7 +42,26 @@
 .mel-cell.on.start.end{border-radius:9px}
 .mel-cell.on.sel{background:var(--ink);color:var(--on-ink)}
 .mel-playhead{position:absolute;top:0;bottom:0;left:0;width:2px;background:var(--ink);opacity:.6;pointer-events:none;z-index:4}
-#paneMelody{display:flex;flex-direction:column;gap:8px}
+#paneMelody{display:flex;flex-direction:column;gap:4px}
 #paneMelody[hidden]{display:none!important}
 
 .mel-zoom{justify-content:flex-end}
+
+/* a phone on its side: the roll gets the height. The chord strip and the transport step aside while Melody is open
+   (the tab has its own Play button), all the buttons share one row, and the rows are a little lower. The roll never has
+   fewer than four rows: if a selected note's bar pushes it down, the panel scrolls. */
+@media (orientation:landscape) and (max-height:560px){
+  .app:has(#edit:not([hidden]) #paneMelody:not([hidden])) .strip,
+  .app:has(#edit:not([hidden]) #paneMelody:not([hidden])) .transport{display:none}
+  #paneMelody{padding-top:4px;padding-bottom:4px;gap:3px}
+  #paneMelody .mel-len,#paneMelody .mel-break,#paneMelody>.hint{display:none}
+  #paneMelody .mel-bar{min-height:40px}
+  #paneMelody .mel-bar button{min-height:40px;min-width:38px;padding:0 6px;font-size:15px}
+  #paneMelody .mel-bar .mel-page{font-size:12.5px}
+  #paneMelody .mel-tools .mel-gap{display:none}
+  #paneMelody .mel-tools #melPlay,#paneMelody .mel-tools .mel-clear{order:3}
+  #paneMelody .mel-tools .mel-gap{order:1}
+  #paneMelody .mel-tools .turn{order:2}
+  #paneMelody .mel-tools .mel-page{order:2}
+  .mel-scroll{min-height:142px}
+}

@@ -8,8 +8,10 @@ import { toast } from './sheet.js';
 import { Q, FLAT, SHARP } from '../core/theory.js';
 import { idxAt } from '../core/song.js';
 
-const STEP = 0.5, ROW = 32, KEYW = 54;   // beats per column, pixels per row, width of the key column
-const ZOOMS = [16, 24, 32, 44];      // pixels per column: the zoom steps (a long loop fits on a phone at the smallest)
+const STEP = 0.5, KEYW = 54;   // beats per column, pixels per row, width of the key column
+const ZOOMS = [20, 24, 32, 44];      // pixels per column: the zoom steps; 20 is the narrowest square that can still be tapped
+const MIN_CELL = ZOOMS[0];
+const SHORT = window.matchMedia('(orientation:landscape) and (max-height:560px)');   // a phone on its side: lower rows, so more of them fit
 const BAR_COLS = 8;                                 // four beats
 const BLACK = [1, 3, 6, 8, 10];
 const MAX_COLS = 256;
@@ -17,7 +19,7 @@ const same = (a, b) => Math.abs(a - b) < 1e-6;
 
 export function initMelody(app) {
   const { store } = app, pane = document.getElementById('paneMelody');
-  let length = 1, CELL = 44, lastBeats = -1;
+  let ROW = SHORT.matches ? 28 : 32, length = 1, CELL = 44, lastBeats = -1;
   /** @type {{t:number, m:number}|null} */ let sel = null;
   /** The square that holds the keyboard focus (row, column), and its elements. */
   let rc = { r: -1, c: 0 };
@@ -37,13 +39,34 @@ export function initMelody(app) {
     if (!store.project.tracks.melody.notes.length) return;
     sel = null; store.update(p => { p.tracks.melody.notes = []; }, ''); toast('Melody cleared.', { action: 'Undo', onAction: () => store.undo() });
   } });
+  clearBtn.classList.add('mel-clear');
   const zoomOut = btn('Zoom out', '−', () => zoom(-1)), zoomIn = btn('Zoom in', '+', () => zoom(1));
   const fitBtn = h('button', { class: 'small ghost', type: 'button', text: 'Fit', 'aria-label': 'Fit the whole loop in view', onClick: () => fit() });
   const info = h('p', { class: 'hint' });
-  pane.append(h('div', { class: 'mel-bar' }, h('span', { class: 'mel-len', text: 'Tap a square to add a note' }), zoomOut, zoomIn, fitBtn, playBtn, clearBtn), noteBar, scroller, info);
-  function setCell(px) { const c = Math.max(3, Math.min(ZOOMS[ZOOMS.length - 1], Math.floor(px + 1e-6))); if (c === CELL) return; const mid = (scroller.scrollLeft + scroller.clientWidth / 2 - KEYW) / CELL; CELL = c; render(); scroller.scrollLeft = Math.max(0, mid * CELL + KEYW - scroller.clientWidth / 2); }
+  // paging: for a loop that is longer than the screen, step through it a screenful of whole bars at a time
+  const barPx = () => BAR_COLS * CELL;
+  const perPage = () => Math.max(1, Math.floor((scroller.clientWidth - KEYW) / barPx()));
+  const totalBars = () => { const g = grid.getAttribute('aria-colcount'); return Math.max(1, Math.ceil((+g || 0) / BAR_COLS)); };
+  const pageTo = bar => { scroller.scrollLeft = Math.max(0, bar) * barPx(); pager(); };
+  const prevPage = btn('Previous bars', ICON.chevron, () => pageTo(Math.round(scroller.scrollLeft / barPx()) - perPage()));
+  const nextPage = btn('Next bars', ICON.chevron, () => pageTo(Math.round(scroller.scrollLeft / barPx()) + perPage()));
+  prevPage.classList.add('turn'); nextPage.classList.add('turn', 'flip');
+  const pageLabel = h('span', { class: 'mel-page' });
+  function pager() {
+    const total = totalBars(), first = Math.min(total, Math.floor(scroller.scrollLeft / barPx() + 0.02) + 1);
+    const last = Math.max(first, Math.min(total, Math.floor((scroller.scrollLeft + scroller.clientWidth - KEYW - 1) / barPx() + 0.02) + 1));
+    pageLabel.textContent = first === last ? `Bar ${first}` : `Bars ${first}–${last}`;
+    pageLabel.setAttribute('aria-label', `Showing ${first === last ? 'bar ' + first : 'bars ' + first + ' to ' + last} of ${total}`);
+    prevPage.disabled = scroller.scrollLeft <= 1; nextPage.disabled = last >= total && scroller.scrollLeft + scroller.clientWidth >= scroller.scrollWidth - 1;
+  }
+  scroller.addEventListener('scroll', pager, { passive: true });
+  // one toolbar: the hint, Play and Clear, then (on its own row) zoom and paging; on a phone on its side they share one row
+  const tools = h('div', { class: 'mel-bar mel-tools' }, h('span', { class: 'mel-len', text: 'Tap a square to add a note' }), playBtn, clearBtn, h('span', { class: 'mel-break' }),
+    zoomOut, zoomIn, fitBtn, h('span', { class: 'mel-gap' }), prevPage, pageLabel, nextPage);
+  pane.append(tools, noteBar, scroller, info);
+  function setCell(px) { const c = Math.max(MIN_CELL, Math.min(ZOOMS[ZOOMS.length - 1], Math.floor(px + 1e-6))); if (c === CELL) return; const mid = (scroller.scrollLeft + scroller.clientWidth / 2 - KEYW) / CELL; CELL = c; render(); scroller.scrollLeft = Math.max(0, mid * CELL + KEYW - scroller.clientWidth / 2); pager(); }
   function zoom(dir) { const i = ZOOMS.findIndex(z => z >= CELL - 0.5); setCell(ZOOMS[Math.max(0, Math.min(ZOOMS.length - 1, (i < 0 ? ZOOMS.length - 1 : i) + dir))]); }
-  function fit() { const song = app.song(); if (!song) return; const cols = Math.min(MAX_COLS, Math.round(song.beats / STEP)); setCell((scroller.clientWidth - KEYW - 2) / cols); scroller.scrollLeft = 0; }
+  function fit() { const song = app.song(); if (!song) return; const cols = Math.min(MAX_COLS, Math.round(song.beats / STEP)); setCell((scroller.clientWidth - KEYW - 2) / cols); scroller.scrollLeft = 0; pager(); }
 
   const edit = fn => store.update(fn, 'melody');
   const find = () => (sel ? store.project.tracks.melody.notes.find(n => same(n.t, /** @type {any} */(sel).t) && n.m === /** @type {any} */(sel).m) : null);
@@ -154,7 +177,7 @@ export function initMelody(app) {
     const cur = find(); if (sel && !cur) sel = null;
     noteBar.hidden = !cur;
     if (cur) lenLabel.textContent = `${name(song, cur.m)} · ${cur.d === 1 ? '1 beat' : cur.d + ' beats'}`;
-    const sig = JSON.stringify([CELL, cols, rs, notes, sel, song.chords.slice(0, song.n).map(c => c.label + c.beats), p.beatsPerChord]);
+    const sig = JSON.stringify([ROW, CELL, cols, rs, notes, sel, song.chords.slice(0, song.n).map(c => c.label + c.beats), p.beatsPerChord]);
     const chordAt = c => idxAt(song, song.cycle + c * STEP * song.spb + 1e-6) % song.n;
     if (sig === key) { if (recenter) recenterView(song, rs, notes, chordAt); return; }
     key = sig;
@@ -194,10 +217,13 @@ export function initMelody(app) {
     const hidden = notes.filter(n => !rs.includes(n.m)).length;
     info.textContent = `${notes.length} ${notes.length === 1 ? 'note' : 'notes'}. Squares with a dot belong to the chord of the moment: they always sound right. Tap a piano key to hear it.` + (hidden ? ` ${hidden} ${hidden === 1 ? 'note is' : 'notes are'} above or below this view.` : '') + (song.beats / STEP > MAX_COLS ? ' Only the first part of a very long loop can be edited here.' : '');
     if (recenter) recenterView(song, rs, notes, chordAt);
+    pager();
   }
   store.subscribe(why => { if (!why.tag.startsWith('mix:') && !why.tag.startsWith('text:')) render(); });
   document.getElementById('tabMelody').addEventListener('click', () => render(true));
   store.subscribeUi((ui, prev) => { if (ui.tab === 'Melody' && prev.tab !== 'Melody') window.setTimeout(() => render(true), 0); });
+  const onShort = () => { ROW = SHORT.matches ? 28 : 32; render(); };
+  if (SHORT.addEventListener) SHORT.addEventListener('change', onShort);
   render();
 
   let playing = false;

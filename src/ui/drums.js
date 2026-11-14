@@ -7,7 +7,7 @@ import { toast } from './sheet.js';
 import { DRUM_LANES, DRUM_LANE_LABEL, DRUM_PATTERNS, DRUM_PRESETS, DRUM_STEPS, DRUM_SWING_MAX, effectiveSteps, emptySteps } from '../core/project.js';
 import { hitDrum } from '../audio/drums.js';
 
-const CELL = 44, LEVEL_NAME = ['off', 'soft', 'normal', 'accent'], HOLD_MS = 450;
+const CELL = 44, NAME_W = 64, LEVEL_NAME = ['off', 'soft', 'normal', 'accent'], HOLD_MS = 450;
 const copy = g => Object.fromEntries(Object.entries(g).map(([l, r]) => [l, r.slice()]));
 
 /** @param {any} app the app object (store, engine, song, busy) @param {HTMLElement} container where the tab is drawn */
@@ -18,6 +18,17 @@ export function initDrums(app, container) {
   const head = h('div', { class: 'dr-playhead', hidden: true, 'aria-hidden': 'true' });
   const grid = h('div', { class: 'dr-grid', role: 'grid', 'aria-label': 'Drum grid: one bar, sixteen steps. Arrow keys move, Enter or Space switches a hit on or off, A changes how hard it is struck.', 'aria-rowcount': DRUM_LANES.length });
   const scroller = h('div', { class: 'dr-scroll' }, grid);
+  // a fade with an arrow on the edge that has more steps behind it: the grid shows only part of the bar on a phone
+  const wrap = h('div', { class: 'dr-wrap' }, scroller);
+  const cue = () => {
+    const max = scroller.scrollWidth - scroller.clientWidth;
+    wrap.classList.toggle('more-r', scroller.scrollLeft < max - 2);
+    wrap.classList.toggle('more-l', scroller.scrollLeft > 2);
+  };
+  let userUntil = 0;   // the grid does not follow the play head for a moment after the person touched it
+  for (const ev of ['pointerdown', 'wheel', 'touchstart']) scroller.addEventListener(ev, () => { userUntil = Date.now() + 2500; }, { passive: true });
+  scroller.addEventListener('scroll', cue, { passive: true });
+  if (typeof ResizeObserver !== 'undefined') new ResizeObserver(cue).observe(scroller);
 
   // ---- hearing a sound
   function hear(lane, level) {
@@ -77,9 +88,8 @@ export function initDrums(app, container) {
   const info = h('p', { class: 'hint', text: 'Tap a square to add a hit, tap it again to remove it. Press and hold a hit to make it soft, normal or accent. Tap a name to hear it.' });
   container.classList.add('dr-pane');
   container.append(
-    h('div', { class: 'dr-bar' }, preset, clearBtn),
-    h('div', { class: 'dr-bar' }, h('div', { class: 'dr-brushes', role: 'group', 'aria-label': 'Strength of new hits' }, brushBtns), swing, swingOut),
-    scroller, info);
+    h('div', { class: 'dr-bar dr-controls' }, preset, clearBtn, h('div', { class: 'dr-brushes', role: 'group', 'aria-label': 'Strength of new hits' }, brushBtns), swing, swingOut),
+    wrap, info);
   swing.id = 'drSwing';
 
   // ---- the grid
@@ -165,13 +175,21 @@ export function initDrums(app, container) {
     }
     if (step !== lastStep) {
       lastStep = step; head.hidden = step < 0;
-      if (step >= 0) head.style.transform = `translateX(${step * CELL}px)`;
+      if (step >= 0) {
+        head.style.transform = `translateX(${step * CELL}px)`;
+        // follow the play head: when its column leaves the view, turn to the page that holds it
+        const left = step * CELL, view = scroller.clientWidth - NAME_W;
+        if (scroller.scrollWidth > scroller.clientWidth && !press && Date.now() > userUntil && (left < scroller.scrollLeft || left + CELL > scroller.scrollLeft + view)) {
+          const page = Math.max(1, Math.floor(view / CELL));
+          scroller.scrollLeft = Math.floor(step / page) * page * CELL;
+        }
+      }
     }
     requestAnimationFrame(frame);
   }
   requestAnimationFrame(frame);
 
-  build(); paint();
+  build(); paint(); cue();
   store.subscribe(why => { if (why.kind === 'edit' && why.tag.startsWith('mix:')) return; paint(); });
   return {
     /** Show the step that is sounding, or hide the head with a negative value. */

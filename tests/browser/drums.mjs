@@ -26,8 +26,12 @@ export async function run(browser, url, r) {
     const first = document.querySelector('#paneDrums .dr-cell[data-lane=kick][data-step="0"]').getBoundingClientRect(), last = document.querySelector('#paneDrums .dr-cell[data-lane=tom][data-step="0"]').getBoundingClientRect();
     return { cvH: cv.height, cvBottom: cv.bottom, gridTop: sc.top, firstTop: first.top, lastBottom: last.bottom, vh: innerHeight, scrollW: document.documentElement.scrollWidth, w: innerWidth, h: first.height, wd: first.width };
   });
-  r.check(lay.firstTop >= 0 && lay.lastBottom <= lay.vh && lay.h >= 44 && lay.wd >= 44, 'drums: all six rows are on screen, squares at least 44 px', JSON.stringify(lay));
-  r.check(lay.cvH >= 80 && lay.scrollW <= lay.w, 'drums: the preview keeps at least 80 px and the page does not scroll sideways', `canvas ${Math.round(lay.cvH)} px`);
+  r.check(lay.firstTop >= 0 && lay.lastBottom <= lay.vh && lay.h >= 30 && lay.wd >= 44, 'drums: all six rows are on screen, squares at least 30 px tall and 44 wide', JSON.stringify(lay));
+  r.check(lay.cvH >= 160 && lay.scrollW <= lay.w, 'drums: the preview keeps at least 160 px and the page does not scroll sideways', `canvas ${Math.round(lay.cvH)} px`);
+  // the grid shows only part of the bar: an arrow cue sits on the edge that has more
+  await page.waitForTimeout(300);
+  const cue = await page.evaluate(() => { const w = document.querySelector('#paneDrums .dr-wrap'); return { more: w.classList.contains('more-r'), op: getComputedStyle(w, '::after').opacity, sw: document.querySelector('#paneDrums .dr-scroll').scrollWidth, cw: document.querySelector('#paneDrums .dr-scroll').clientWidth }; });
+  r.check(cue.sw > cue.cw && cue.more && cue.op === '1', 'drums: a visible cue says the grid scrolls (right edge fade and arrow)', JSON.stringify(cue));
   const names = await page.locator('#paneDrums .dr-hear').allTextContents();
   r.check(names.join() === 'Kick,Snare,Hi-hat,Open hat,Clap,Tom', 'drums: every row is labelled', names.join());
 
@@ -46,6 +50,12 @@ export async function run(browser, url, r) {
   for (let i = 0; i < 10; i++) { seen.add(await page.evaluate(() => { const h = document.querySelector('#paneDrums .dr-playhead'); return h.hidden ? 'hidden' : h.style.transform; })); await page.waitForTimeout(110); }
   r.check(!seen.has('hidden') && seen.size > 2, 'drums: the play head column moves while playing', [...seen].join(' '));
   await shot('drums-pattern');
+  // the grid follows the play head: over one bar the view turns to the later steps
+  await page.evaluate(() => { document.querySelector('#paneDrums .dr-scroll').scrollLeft = 0; });
+  const lefts = new Set();
+  for (let i = 0; i < 40; i++) { lefts.add(Math.round(await page.evaluate(() => document.querySelector('#paneDrums .dr-scroll').scrollLeft))); await page.waitForTimeout(100); }
+  const headVisible = await page.evaluate(() => { const hd = document.querySelector('#paneDrums .dr-playhead'); if (hd.hidden) return true; const a = hd.getBoundingClientRect(), b = document.querySelector('#paneDrums .dr-scroll').getBoundingClientRect(); return a.left >= b.left - 1 && a.right <= b.right + 1; });
+  r.check(lefts.size > 1 && headVisible, 'drums: the grid follows the play head', `scrollLeft ${[...lefts].join(',')}`);
   await page.click('#play');
 
   r.check(await cell('kick', 0).getAttribute('aria-label') === 'Kick, beat 1, step 1: normal', 'drums: a square says what it is');
@@ -80,4 +90,15 @@ export async function run(browser, url, r) {
   r.check((await drums()).steps.kick.filter(Boolean).length === 4, 'drums: Undo brings the pattern back');
   r.check(await page.evaluate(() => { const L = window.__app.lab, p = window.__app.store.project; return JSON.stringify(L.normalizeProject(JSON.parse(JSON.stringify(p))).tracks.drums) === JSON.stringify(p.tracks.drums); }), 'drums: the stored project reads back unchanged');
   await context.close();
+
+  // the Drums tab keeps the preview and the page on small phones (before: canvas 50-88 px and the page scrolled)
+  for (const [w, hh] of [[360, 640], [375, 667], [390, 844]]) {
+    const a = await openApp(browser, url, r, { viewport: { width: w, height: hh }, mobile: true });
+    await a.page.click('#editBtn'); await a.page.click('#tabDrums'); await a.page.waitForTimeout(250);
+    const m = await a.page.evaluate(() => { const b = id => document.getElementById(id).getBoundingClientRect(); const rows = [...document.querySelectorAll('#paneDrums .dr-cell[data-step="0"]')].map(c => c.getBoundingClientRect().height);
+      return { cv: b('cv').height, sh: document.documentElement.scrollHeight, ih: innerHeight, sw: document.documentElement.scrollWidth, iw: innerWidth, playB: b('play').bottom, playH: b('play').height, editB: b('editBtn').bottom, rowMin: Math.min(...rows), tabsH: b('tabDrums').height, exportB: [...document.querySelectorAll('.actions button')].map(x => x.getBoundingClientRect().bottom).sort((x, y) => y - x)[0] }; });
+    r.check(m.cv >= 160 && m.sh <= m.ih && m.sw <= m.iw && m.playB <= m.ih && m.playH > 0 && m.exportB <= m.ih && m.rowMin >= 30, `drums at ${w}×${hh}: canvas at least 160 px, no page scroll, Play and Export reachable`, JSON.stringify(m));
+    if (shots) await a.page.screenshot({ path: `${shots}/drums-${w}x${hh}.png` });
+    await a.context.close();
+  }
 }

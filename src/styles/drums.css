@@ -2,16 +2,22 @@
 .dr-pane{display:flex;flex-direction:column;gap:4px}
 .dr-pane[hidden]{display:none!important}
 .dr-bar{display:flex;gap:6px;align-items:center;min-height:44px}
+.dr-controls{flex-wrap:wrap}
 .dr-bar select{flex:1;min-width:0}
 .dr-bar .dr-cap{flex:none;font-size:13.5px;font-weight:700;color:var(--muted)}
 .dr-bar input[type=range]{flex:1;min-width:0;min-height:44px}
+.dr-wrap{position:relative;max-width:100%}
+.dr-wrap::before,.dr-wrap::after{content:"";position:absolute;top:1.5px;bottom:1.5px;width:30px;pointer-events:none;z-index:3;opacity:0;transition:opacity .15s;display:flex;align-items:center;font-size:22px;font-weight:900;color:var(--ink);border-radius:0 10px 10px 0}
+.dr-wrap::after{right:1.5px;background:linear-gradient(90deg,transparent,var(--card) 70%);content:"\203A";justify-content:flex-end;padding-right:5px}
+.dr-wrap::before{left:65px;background:linear-gradient(270deg,transparent,var(--card) 70%);content:"\2039";padding-left:5px;border-radius:0}
+.dr-wrap.more-r::after,.dr-wrap.more-l::before{opacity:1}
 .dr-brushes{flex:none;display:flex;gap:4px}
 .dr-brushes button{flex:none;padding:0 8px;font-size:13px}
 .dr-bar .dr-swing-val{flex:none;min-width:4.6em;text-align:right;font-size:13.5px;font-weight:700;color:var(--muted)}
 .dr-bar button{flex:none;min-height:44px;padding:0 14px}
 .dr-bar button[aria-pressed="true"]{background:var(--ink);color:var(--on-ink)}
 .dr-scroll{scroll-padding-left:64px;overflow-x:auto;overflow-y:hidden;overscroll-behavior-x:contain;border:1.5px solid var(--line);border-radius:12px;background:var(--field);max-width:100%}
-.dr-grid{--dr-name:64px;display:grid;grid-template-columns:var(--dr-name) repeat(16,44px);grid-template-rows:repeat(6,44px);width:max-content;position:relative;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
+.dr-grid{--dr-name:64px;display:grid;grid-template-columns:var(--dr-name) repeat(16,44px);grid-template-rows:repeat(6,var(--dr-row,44px));width:max-content;position:relative;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
 .dr-row{display:contents}
 .dr-name{position:sticky;left:0;z-index:2;background:var(--card);border-right:1.5px solid var(--line);display:flex;align-items:stretch}
 .dr-name button.dr-hear{all:unset;box-sizing:border-box;flex:1;display:flex;align-items:center;justify-content:center;padding:0 4px;font:inherit;font-size:12.5px;font-weight:800;color:var(--ink);cursor:pointer;text-align:center}
@@ -32,7 +38,17 @@
 .app:has(#paneDrums:not([hidden])) .stage{min-height:96px}
 .editp:has(#paneDrums:not([hidden])) #paneDrums .hint{display:none}
 .editp:has(#paneDrums:not([hidden])) .pane{padding-top:4px;padding-bottom:6px}
-/* on a phone the chord strip steps aside while Drums is open: the grid needs the height (Play, Edit and Export stay) */
+/* on a phone held upright the chord strip steps aside while Drums is open, the two control rows become one, and the rows
+   share the height that is left once the preview has its 160 px (header 50 + preview 160 + transport 50 + actions 60 + tabs 54 + panel padding 10 + controls 44 + gap 4 + borders 2 = 446, the preview canvas has 4 px of padding above and below) */
 @media (max-width:899px) and (min-height:561px){
   .app:has(#edit:not([hidden]) #paneDrums:not([hidden])) .strip{display:none}
+  .app:has(#edit:not([hidden]) #paneDrums:not([hidden])) .stage{min-height:168px}
+  #paneDrums{--dr-row:clamp(30px,calc((100dvh - 450px) / 6),44px)}
+  #paneDrums .dr-controls{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch}
+  #paneDrums .dr-controls::-webkit-scrollbar{display:none}
+  #paneDrums .dr-controls{-webkit-mask-image:linear-gradient(90deg,#000 calc(100% - 26px),transparent);mask-image:linear-gradient(90deg,#000 calc(100% - 26px),transparent);padding-right:26px}
+  #paneDrums .dr-controls>*{flex:none}
+  #paneDrums .dr-controls select{width:112px}
+  #paneDrums .dr-controls button{padding:0 11px}
+  #paneDrums .dr-controls input[type=range]{width:96px;min-width:96px}
 }
