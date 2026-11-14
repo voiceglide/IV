@@ -161,7 +161,7 @@ export function initDrums(app, container) {
   let lastStep = -1;
   function frame() {
     const song = app.song && app.song(), eng = app.engine;
-    const visible = !!container.offsetParent;
+    const visible = container.getClientRects().length > 0;
     let step = -1;
     if (visible && song && eng.playing) {
       const loopStart = song.starts[song.n], pos = ((eng.time() - loopStart) % song.cycle + song.cycle) % song.cycle;
