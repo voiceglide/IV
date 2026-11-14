@@ -24,17 +24,27 @@ self.addEventListener('activate', e => {
 
 self.addEventListener('message', e => { if (e.data && e.data.type === 'SKIP_WAITING') sw.skipWaiting(); });
 
+/** The cached page for a navigation: the very file asked for first (a query string such as ?x=1 does not matter), and the app's own page
+ * only for the app's own address, never for another page of the site such as sound-check.html. */
+async function cached(cache, request) {
+  const hit = await cache.match(request, { ignoreSearch: true });
+  if (hit) return hit;
+  const path = new URL(request.url).pathname, home = new URL(HOME).pathname;
+  return path === home || path === home + 'index.html' ? cache.match(HOME) : undefined;
+}
+
 async function navigate(request) {
   const cache = await caches.open(CACHE);
   const net = fetch(request);
+  net.catch(() => {}); // an answer that comes in after the timeout is not an unhandled error
   let timer = 0;
   const timeout = new Promise((_, no) => { timer = setTimeout(() => no(new Error('slow')), NAV_TIMEOUT); });
   try {
     const res = await Promise.race([net, timeout]);
     if (res.ok || res.status < 500) return res;
-    return (await cache.match(HOME)) || res;
+    return (await cached(cache, request)) || res;
   } catch (err) {
-    return (await cache.match(HOME)) || net;
+    return (await cached(cache, request)) || net;
   } finally { clearTimeout(timer); }
 }
 
