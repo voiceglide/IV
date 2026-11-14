@@ -8,7 +8,7 @@ import { slotPitch, glideOf, glideCurve } from '../core/song.js';
  * `abs` maps song time to context time; events that are already over at `now` are folded into the start value,
  * so a live play that begins mid-song never schedules anything in the past.
  */
-export function schedulePitch(param, song, k, abs, now) {
+export function schedulePitch(param, song, k, abs, now, until = Infinity) {
   const S = song.starts, n = S.length, base = slotPitch(song, 0, k);
   const cents = i => (slotPitch(song, i, k) - base) * 100;
   /** @type {{t:number, dur:number, curve:Float32Array}[]} */ const ev = [];
@@ -16,8 +16,9 @@ export function schedulePitch(param, song, k, abs, now) {
   for (let i = 1; i < n; i++) {
     if (slotPitch(song, i, k) === slotPitch(song, i - 1, k)) continue;
     const g = glideOf(song, i), from = S[i] - g, a = abs(from), b = abs(S[i]);
+    if (from > until) break;
     if (b <= now) { initial = cents(i); continue; }
-    if (a < now) { // started already: continue from the point where we are
+    if (a <= now) { // started already: continue from the point where we are
       const steps = Math.max(2, Math.ceil((b - now) * 200)), arr = new Float32Array(steps);
       for (let j = 0; j < steps; j++) { const tc = now + (b - now) * j / (steps - 1); arr[j] = cents(i - 1) + 100 * glideCurve(song, k, S[i] - (b - tc)); }
       arr[steps - 1] = cents(i);
@@ -36,9 +37,9 @@ export function schedulePitch(param, song, k, abs, now) {
 }
 
 /** A pitch bus for voice k. Returns {bus, base}: `base` is the frequency (Hz) the oscillators are tuned to. */
-export function createPitchBus(ac, song, k, abs, start, stop, hz) {
+export function createPitchBus(ac, song, k, abs, start, stop, hz, now = ac.currentTime, until = Infinity) {
   const bus = ac.createConstantSource(); bus.offset.value = 0;
-  const base = schedulePitch(bus.offset, song, k, abs, ac.currentTime);
+  const base = schedulePitch(bus.offset, song, k, abs, now, until);
   bus.start(start); bus.stop(stop);
   return { bus, base: hz(base) };
 }

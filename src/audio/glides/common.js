@@ -7,6 +7,7 @@
 //   v.amp(param, scale)       schedules this voice's loudness (fade in, doubled voices muted, swell on arrival, fade out)
 //   v.vib                     a node carrying this voice's vibrato in cents (fades in once the voice has arrived), or null
 //   v.moves                   times at which this voice arrives on a new note
+//   v.reg      list the engine uses to stop every source of the voice at once; osc() and breath() add to it
 //   v.swell                   0…1, how much the sound should open up on each arrival (the engine also swells the loudness)
 // A sound only decides the timbre. It never schedules pitch itself.
 import { noiseBuffer } from '../instruments/kit.js';
@@ -26,6 +27,7 @@ export function osc(ac, v, type, ratio = 1, cents = 0) {
   v.bus.connect(o.detune);
   if (v.vib) v.vib.connect(o.detune);
   o.start(v.start); o.stop(v.stop);
+  if (v.reg) v.reg.push(o);
   return o;
 }
 export function mix(ac, sources) {
@@ -45,6 +47,7 @@ export function breath(ac, v, freq, q) {
   const s = ac.createBufferSource(); s.buffer = noiseBuffer(ac); s.loop = true;
   const b = ac.createBiquadFilter(); b.type = 'bandpass'; b.frequency.value = freq; b.Q.value = q;
   s.connect(b); s.start(v.start, (v.k * 0.137) % 0.9); s.stop(v.stop);
+  if (v.reg) v.reg.push(s);
   return b;
 }
 

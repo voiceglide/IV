@@ -6,6 +6,7 @@ export default { id: 'brass', name: 'Soft brass', hint: 'swells on every move', 
   voice(ac, dest, v) {
     const f = lowpass(ac, 700, 1); f.frequency.setValueAtTime(700, v.start);
     // the filter opens each time this voice lands on a new note, then settles
-    for (const t of v.moves) { f.frequency.setTargetAtTime(v.bass ? 1500 : 2600, t, 0.05); f.frequency.setTargetAtTime(v.bass ? 800 : 1200, t + 0.2, 0.5); }
+    const open = 700 + ((v.bass ? 1500 : 2600) - 700) * 2 * (v.swell === undefined ? 0.5 : v.swell); // style.swell 0.5 = as designed
+    for (const t of v.moves) { f.frequency.setTargetAtTime(open, t, 0.05); f.frequency.setTargetAtTime(v.bass ? 800 : 1200, t + 0.2, 0.5); }
     mix(ac, [[osc(ac, v, 'sawtooth'), 0.5], [osc(ac, v, 'sawtooth', 1, 6), 0.5]]).connect(f); out(ac, v, f, dest, 0.6);
   } };

@@ -48,15 +48,15 @@ export function buildSong(project) {
   for (const x of mid) { uLo = Math.min(uLo, ...x.upper); uHi = Math.max(uHi, ...x.upper); bLo = Math.min(bLo, x.bass); bHi = Math.max(bHi, x.bass); }
   const vs = cycle + starts[0] - LEAD;
   const text = project.text;
-  return {
-    error: '',
-    song: {
-      chords: tri, v, starts, end: t, cycle, n, vs, ve: vs + cycle, spb, key, sharps: base.some(c => c.acc === '♯'),
-      uLo, uHi, bLo, bHi, dur: Math.max(0.4, Math.min(cycle / n, 8)), kb: null, glide: project.glide, glideStyle: project.glideStyle,
-      hook: text.hook.trim(), question: text.question.trim(), reveal: text.reveal.trim(), watermark: text.watermark.trim(), qSec: 2.2,
-      beats: cycle / spb, tempo: project.tempo, tracks: project.tracks,
-    },
+  const song = {
+    chords: tri, v, starts, end: t, cycle, n, vs, ve: vs + cycle, spb, key, sharps: base.some(c => c.acc === '♯'),
+    uLo, uHi, bLo, bHi, dur: Math.max(0.4, Math.min(cycle / n, 8)), kb: null, glide: project.glide, glideStyle: project.glideStyle,
+    hook: text.hook.trim(), question: text.question.trim(), reveal: text.reveal.trim(), watermark: text.watermark.trim(), qSec: 2.2,
+    beats: cycle / spb, tempo: project.tempo, tracks: project.tracks,
   };
+  // for tests and tools: the glide curve of this song, without importing the module (not part of the saved data)
+  Object.defineProperty(song, 'glideCurve', { value: (k, t) => glideCurve(song, k, t) });
+  return { error: '', song };
 }
 
 export function glideOf(song, i) { return Math.min(song.glide, 0.6 * (song.starts[i] - song.starts[i - 1])); }
