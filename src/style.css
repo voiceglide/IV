@@ -26,8 +26,8 @@ button,select,input,textarea{touch-action:manipulation}
 h2,p{margin:0}
 
 .app{height:100vh;height:100dvh;max-width:520px;margin:0 auto;display:flex;flex-direction:column;padding:env(safe-area-inset-top) env(safe-area-inset-right) 0 env(safe-area-inset-left)}
-.bar{display:flex;gap:6px;align-items:center;padding:4px var(--pad) 2px}
-.bar button.icon{width:44px;min-height:44px}
+.app>.bar{display:flex;gap:6px;align-items:center;padding:4px var(--pad) 2px}
+.app>.bar button.icon{width:44px;min-height:44px}
 .pick{flex:1;min-width:0;display:flex;align-items:center;gap:10px;text-align:left;background:var(--card);color:var(--ink);border:1.5px solid var(--edge);padding:2px 12px 2px 8px;min-height:44px;border-radius:14px}
 .pick .logo{flex:none}
 .pt{flex:1;min-width:0;display:grid;line-height:1.2}
@@ -198,7 +198,7 @@ body.lock .app{pointer-events:none}
 @media (orientation:landscape) and (max-height:560px){
   .app{max-width:none;display:grid;grid-template-columns:auto minmax(0,1fr);grid-template-rows:auto auto auto minmax(0,1fr) auto;column-gap:4px}
   .stage{grid-column:1;grid-row:1 / -1;width:calc((100dvh - 12px) * 9 / 16 + 24px);height:100dvh;min-height:0}
-  .bar,.strip,.transport,.editp,.actions{grid-column:2}
+  .app>.bar,.strip,.transport,.editp,.actions{grid-column:2}
   .editp{max-height:none;min-height:0;grid-row:4}
   .actions{grid-row:5}
   .sheet .panel{max-height:96dvh}
@@ -206,7 +206,7 @@ body.lock .app{pointer-events:none}
 /* wide screens: preview and chords on the left, the editor on the right, using the width up to 1400 px */
 @media (min-width:900px) and (min-height:561px){
   .app{max-width:1400px;display:grid;grid-template-columns:minmax(0,1fr) minmax(420px,560px);grid-template-rows:auto minmax(0,1fr) auto auto;grid-template-areas:"bar bar" "stage panel" "strip panel" "trans actions";column-gap:20px;padding:12px 20px}
-  .bar{grid-area:bar}.stage{grid-area:stage;min-height:0}.strip{grid-area:strip}.transport{grid-area:trans}.editp{grid-area:panel}.actions{grid-area:actions}
+  .app>.bar{grid-area:bar}.stage{grid-area:stage;min-height:0}.strip{grid-area:strip}.transport{grid-area:trans}.editp{grid-area:panel}.actions{grid-area:actions}
   .editp{max-height:none;min-height:0;border:1px solid var(--edge);border-radius:16px;overflow:hidden}
   .pane{padding:12px 16px}
   .prow{flex-wrap:wrap;overflow:visible}
