@@ -52,6 +52,7 @@ export async function run(browser, url, r) {
   // exports: audio, MIDI, then video (real-time fallback where the browser has no frame encoder)
   await build('C:2 G:2 Am:2 F:2', { tempo: 120 });
   await page.click('#exportBtn'); await page.waitForSelector('#exportSheet');
+  await page.click('#exportSheet summary'); // the other formats sit under "More"
   let [dl] = await Promise.all([page.waitForEvent('download'), page.click('#exportSheet .ld:has-text("Audio")')]);
   const wav = await readFile(await dl.path());
   r.check(dl.suggestedFilename() === 'edge.wav' && wav.toString('latin1', 0, 4) === 'RIFF' && Math.abs(wav.length - 44 - 4 * 48000 * 4) < 16, 'WAV export: 4-second stereo loop', `${wav.length} bytes`);
@@ -60,12 +61,12 @@ export async function run(browser, url, r) {
   [dl] = await Promise.all([page.waitForEvent('download'), page.click('#exportSheet .ld:has-text("MIDI")')]);
   const mid = await readFile(await dl.path());
   r.check(dl.suggestedFilename() === 'edge.mid' && mid.toString('latin1', 0, 4) === 'MThd', 'MIDI export: a MIDI file is downloaded');
-  await page.click('#exportSheet .ld:has-text("Video")');
+  await page.click('#exportSheet .xsave');
   await page.waitForSelector('#exportSheet video', { timeout: 60000 }).catch(() => {});
   const vid = await page.evaluate(() => { const v = document.querySelector('#exportSheet video'); return v ? { src: v.src.slice(0, 5), status: document.querySelector('#exportSheet .status').textContent } : null; });
   r.check(!!vid && vid.src === 'blob:', 'video export: a playable result appears', vid ? vid.status : 'no video');
   r.check(await page.evaluate(() => !window.__app.busy() && !document.getElementById('play').disabled), 'after the export the app is usable again');
-  [dl] = await Promise.all([page.waitForEvent('download'), page.click('#exportSheet button:has-text("Save video")')]);
+  [dl] = await Promise.all([page.waitForEvent('download'), page.click('#exportSheet button:has-text("Download video")')]);
   r.check(/^edge\.(mp4|webm)$/.test(dl.suggestedFilename()) && (await readFile(await dl.path())).length > 20000, 'video export: the file is saved', dl.suggestedFilename());
   await context.close();
 }

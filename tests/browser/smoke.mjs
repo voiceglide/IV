@@ -84,7 +84,7 @@ export async function run(browser, url, r) {
 
     // export sheet lists the four formats and fits
     await page.click('#exportBtn'); await page.waitForSelector('#exportSheet');
-    r.check(await page.locator('#exportSheet .ld').count() === 4, `${name}: Export offers video, audio, MIDI and project file`);
+    r.check(await page.locator('#exportSheet .xsave').count() === 1 && await page.locator('#exportSheet details .ld').count() === 3, `${name}: Export offers Save video, with audio, MIDI and project file under More`);
     await page.keyboard.press('Escape');
     r.check(await page.locator('.sheet').count() === 0, `${name}: Escape closes the sheet`);
     await context.close();

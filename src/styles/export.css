@@ -1,0 +1,16 @@
+/* Export sheet: Format and Look pickers, the one big Save video button, and the "More" fold */
+.xlabel{font-size:12.5px;font-weight:700;color:var(--muted);margin-bottom:6px}
+.xseg{display:flex;border:1.5px solid var(--edge);border-radius:12px;overflow:hidden;background:var(--field)}
+.xseg label{flex:1 1 0;margin:0;position:relative;color:var(--ink);min-width:0}
+.xseg label+label{border-left:1.5px solid var(--line)}
+.xseg input{position:absolute;opacity:0;inset:0;width:100%;height:100%;margin:0;cursor:pointer}
+.xseg span{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:46px;padding:4px 6px;text-align:center}
+.xseg b{font-size:15px;font-weight:700}
+.xseg small{font-size:12px;font-weight:500;color:var(--muted)}
+.xseg input:checked+span{background:var(--pink);color:#fff}
+.xseg input:checked+span small{color:inherit;opacity:.9}
+.xseg input:focus-visible+span{outline:3px solid var(--pink);outline-offset:-3px}
+.xseg input:disabled{cursor:default}
+.xnote{font-size:13px;line-height:1.4;color:var(--muted)}
+.xmore>summary{cursor:pointer;min-height:44px;display:flex;align-items:center;font-size:15px;font-weight:700;color:var(--ink)}
+.xmore[open]>summary{margin-bottom:8px}
