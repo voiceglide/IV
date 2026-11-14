@@ -147,5 +147,42 @@ export async function run(browser, url, r) {
   r.check(light >= 3, 'field borders have at least 3:1 contrast (light)', light.toFixed(2));
   const darkR = await ratio('dark');
   r.check(darkR >= 3, 'field borders have at least 3:1 contrast (dark)', darkR.toFixed(2));
+  // the "Open" tag on the open project's row: readable in both themes (at least 4.5:1)
+  await d.page.click('#projBtn'); await d.page.waitForSelector('#projectsSheet .pj-tag');
+  const tagRatio = async scheme => { await d.page.emulateMedia({ colorScheme: scheme }); await d.page.waitForTimeout(100); return d.page.evaluate(() => {
+    const lum = c => { const [R, G, B] = c.match(/[\d.]+/g).slice(0, 3).map(Number).map(v => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; }); return 0.2126 * R + 0.7152 * G + 0.0722 * B; };
+    const cs = getComputedStyle(document.querySelector('#projectsSheet .pj-tag')), a = lum(cs.color), b = lum(cs.backgroundColor);
+    return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+  }); };
+  const tagLight = await tagRatio('light'), tagDark = await tagRatio('dark');
+  r.check(tagLight >= 4.5 && tagDark >= 4.5, 'the Open tag has at least 4.5:1 contrast in the light and the dark theme', `light ${tagLight.toFixed(2)}, dark ${tagDark.toFixed(2)}`);
   await d.context.close();
+
+  // ---- the piano roll on a laptop in the dark theme: the key column is in view from the start and every square is placed in the roll
+  const lp = await browser.newContext({ viewport: { width: 1280, height: 800 }, colorScheme: 'dark' });
+  const lpp = await lp.newPage(); await lpp.goto(url); await lpp.waitForFunction('window.__app && !!window.__app.song()');
+  { const w = await lpp.waitForSelector('#welcomeSheet button:has-text("Skip")', { timeout: 1500 }).catch(() => null); if (w) await w.click(); }
+  await lpp.click('#tabMelody'); await lpp.waitForTimeout(300);
+  const roll = await lpp.evaluate(() => { const sc = document.querySelector('.mel-scroll').getBoundingClientRect(), k = document.querySelector('.mel-name').getBoundingClientRect(), cells = document.querySelectorAll('.mel-cell').length, rows = document.querySelectorAll('.mel-name').length, heads = document.querySelectorAll('.mel-head').length;
+    const first = document.querySelector('.mel-cell').getBoundingClientRect(), blocks = [...document.querySelectorAll('.mel-name.white')].every(e => e.getBoundingClientRect().height < 40);
+    return { keyLeft: k.left - sc.left, keyW: k.width, scrollLeft: document.querySelector('.mel-scroll').scrollLeft, cellsPerRow: cells / rows, heads, firstLeft: first.left - sc.left, blocks }; });
+  r.check(roll.keyLeft >= 0 && roll.keyLeft < 4 && roll.keyW >= 40 && roll.scrollLeft === 0 && roll.cellsPerRow === roll.heads && roll.blocks, 'melody roll at 1280×800 dark: piano keys in view on the first view, squares in their own columns (no stray white blocks)', JSON.stringify(roll));
+  await lp.close();
+
+  // ---- toasts: one live region, read once
+  const t = await openApp(browser, url, r, { viewport: { width: 375, height: 667 }, mobile: true });
+  await t.page.click('#strip .chord >> nth=1'); await t.page.click('#strip .rm'); await t.page.waitForTimeout(300);
+  const live = await t.page.evaluate(() => ({ boxes: document.querySelectorAll('#toasts').length, regions: [...document.querySelectorAll('[role=status],[aria-live]')].filter(e => /removed/.test(e.textContent)).length,
+    audible: [...document.querySelectorAll('#toasts *, #toasts')].filter(e => e.getAttribute('aria-hidden') !== 'true' && [...e.childNodes].some(n => n.nodeType === 3 && /removed/.test(n.textContent))).length }));
+  r.check(live.boxes === 1 && live.regions === 1 && live.audible === 1, 'the Undo toast has one live region and its text can be read once', JSON.stringify(live));
+  await t.context.close();
+
+  // ---- full screen on a phone: no horizontal scroll with the page in full screen, before and after
+  const f = await openApp(browser, url, r, { viewport: { width: 375, height: 667 }, mobile: true });
+  await f.page.click('#fsBtn'); await f.page.waitForTimeout(300);
+  const fs1 = await f.page.evaluate(() => ({ fs: document.body.classList.contains('fs'), sw: document.documentElement.scrollWidth, bw: document.body.scrollWidth, iw: innerWidth, sh: document.documentElement.scrollHeight, ih: innerHeight }));
+  await f.page.click('#fsBtn'); await f.page.waitForTimeout(200);
+  const fs2 = await f.page.evaluate(() => ({ fs: document.body.classList.contains('fs'), sw: document.documentElement.scrollWidth, iw: innerWidth }));
+  r.check(fs1.fs && fs1.sw <= fs1.iw && fs1.bw <= fs1.iw && fs1.sh <= fs1.ih && !fs2.fs && fs2.sw <= fs2.iw, 'full screen on a phone: the page does not scroll in either direction', JSON.stringify([fs1, fs2]));
+  await f.context.close();
 }

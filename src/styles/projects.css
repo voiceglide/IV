@@ -11,7 +11,7 @@
 .pj-main b{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .pj-main small{overflow-wrap:anywhere}
 .pj-row.is-open .pj-main{border-color:var(--ink)}
-.pj-tag{font-size:12px;font-weight:800;letter-spacing:.04em;background:var(--ink);color:#f6efe3;border-radius:8px;padding:3px 8px}
+.pj-tag{font-size:12px;font-weight:800;letter-spacing:.04em;background:var(--ink);color:var(--on-ink);border-radius:8px;padding:3px 8px}
 .pj-more{min-height:60px;height:auto;border:1.5px solid var(--line);color:var(--ink)}
 .pj-acts{display:grid;grid-template-columns:1fr 1fr;gap:6px;padding:8px;background:var(--soft);border-radius:14px}
 .pj-acts[hidden]{display:none}

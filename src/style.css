@@ -38,7 +38,7 @@ h2,p{margin:0}
 canvas#cv{display:block;cursor:pointer;width:min(100cqw,calc(100cqh * 9 / 16));aspect-ratio:9/16;height:auto;border-radius:18px;box-shadow:0 14px 34px var(--shadow);background:var(--paper)}
 @supports not (container-type:size){canvas#cv{height:100%;width:auto;max-width:100%}}
 
-.fs{position:absolute;top:8px;right:calc(var(--pad) + 4px);width:44px;min-height:44px;background:color-mix(in srgb,var(--card) 82%,transparent)}
+button.fs{position:absolute;top:8px;right:calc(var(--pad) + 4px);width:44px;min-height:44px;background:color-mix(in srgb,var(--card) 82%,transparent)}
 body.fs .stage{position:fixed;inset:0;z-index:30;background:var(--paper);padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom)}
 body.fs canvas#cv{border-radius:0;box-shadow:none}
 
