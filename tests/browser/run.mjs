@@ -5,7 +5,10 @@ import { fileURLToPath } from 'node:url';
 import { serve, loadPlaywright, reporter } from './lib.mjs';
 
 const pw = loadPlaywright();
-if (!pw) { console.log('Playwright is not installed on this machine: browser tests skipped.'); process.exit(0); }
+if (!pw) {
+  if (process.env.REQUIRE_BROWSER_TESTS) { console.error('Playwright is required here but is not installed.'); process.exit(1); }
+  console.log('Playwright is not installed on this machine: browser tests skipped.'); process.exit(0);
+}
 const here = dirname(fileURLToPath(import.meta.url));
 const only = process.argv.slice(2);
 const files = readdirSync(here).filter(f => f.endsWith('.mjs') && !['run.mjs', 'lib.mjs'].includes(f) && (!only.length || only.includes(f.replace('.mjs', '')))).sort();

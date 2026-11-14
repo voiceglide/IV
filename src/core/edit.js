@@ -1,5 +1,6 @@
 // Edits on the chord track. Each one changes a project draft in place (see ui/store.js) and is pure otherwise.
 import { parseChord } from './theory.js';
+import { newId } from './project.js';
 
 /** Insert a chord after position `at` (−1 puts it first). Returns the new chord's index. */
 export function insertChord(p, at, sym = 'C') {
@@ -12,7 +13,7 @@ export function removeChord(p, i) {
   // a section label moves on to the next chord instead of vanishing with its first one
   if (gone && gone.section && p.chords[i] && !p.chords[i].section) p.chords[i].section = gone.section;
 }
-export function duplicateChord(p, i) { const c = p.chords[i]; p.chords.splice(i + 1, 0, { sym: c.sym, beats: c.beats, section: '' }); return i + 1; }
+export function duplicateChord(p, i) { const c = p.chords[i]; p.chords.splice(i + 1, 0, { id: newId().slice(0, 8), sym: c.sym, beats: c.beats, section: '' }); return i + 1; }
 /** Swap with the neighbour on the left (dir −1) or right (dir 1). Returns the chord's new index. */
 export function moveChord(p, i, dir) {
   const j = i + dir; if (j < 0 || j >= p.chords.length) return i;

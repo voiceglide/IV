@@ -3,10 +3,12 @@
 import { parseProgression, chordToText } from './theory.js';
 
 export const FORMAT = 'chord-project';
-export const VERSION = 2;
+export const VERSION = 3;
 
 /**
- * @typedef {{sym:string, beats:number|null, section:string}} ChordItem
+ * @typedef {{id:string, sym:string, beats:number|null, section:string}} ChordItem  id is stable across edits and reordering
+ * @typedef {{curve:'straight'|'eased'|'scoop', vibrato:number, swell:number}} GlideStyle  vibrato and swell 0–1
+ * @typedef {{bass:string|null, inner:string|null, top:string|null}} VoiceSplit  glide sound per voice group, null = use the main sound
  * @typedef {{volume:number, pan:number, mute:boolean, solo:boolean}} Mix
  * @typedef {{t:number, d:number, m:number}} MelodyNote  time and length in beats from the loop start, MIDI note
  * @typedef {Object} Project
@@ -20,9 +22,10 @@ export const VERSION = 2;
  * @property {number} beatsPerChord    default length of a chord, in beats
  * @property {string} key              'auto', or '0'…'11' (major) / '0:m'…'11:m' (minor)
  * @property {number} glide            seconds a voice takes to slide to the next chord
+ * @property {GlideStyle} glideStyle
  * @property {ChordItem[]} chords      the master chord track
  * @property {{hook:string, question:string, reveal:string, watermark:string}} text  on-screen text for the video
- * @property {{voices:Mix&{sound:string}, chords:Mix&{instrument:string}, bass:Mix&{instrument:string, pattern:string},
+ * @property {{voices:Mix&{sound:string, split:VoiceSplit}, chords:Mix&{instrument:string}, bass:Mix&{instrument:string, pattern:string},
  *   drums:Mix&{pattern:string}, melody:Mix&{instrument:string, notes:MelodyNote[]}}} tracks
  */
 
@@ -31,9 +34,13 @@ export const TRACK_LABEL = { voices: 'Gliding voices', chords: 'Extra layer', ba
 export const BASS_PATTERNS = { off: 'Off', root: 'Long notes', pulse: 'On every beat', fifth: 'Root and fifth', octave: 'Octaves' };
 export const DRUM_PATTERNS = { off: 'Off', soft: 'Soft pulse', basic: 'Basic beat', four: 'Four on the floor', half: 'Half time' };
 
+export const GLIDE_CURVES = ['straight', 'eased', 'scoop'];
+/** @type {GlideStyle} */
+const DEFAULT_STYLE = { curve: 'eased', vibrato: 0.5, swell: 0.5 };
 const mix = (volume = 0.8) => ({ volume, pan: 0, mute: false, solo: false });
 const clamp = (x, lo, hi) => Math.max(lo, Math.min(hi, x));
 const num = (x, d) => (typeof x === 'number' && isFinite(x) ? x : d);
+const shortId = () => newId().slice(0, 8);
 const str = (x, d = '', max = 400) => (typeof x === 'string' ? x.slice(0, max) : d);
 
 export function newId() {
@@ -67,11 +74,11 @@ export function newProject(name = 'Untitled', chordText = 'C G Am F') {
   const now = Date.now();
   return {
     format: FORMAT, version: VERSION, id: newId(), name, createdAt: now, updatedAt: now,
-    tempo: 90, beatsPerChord: 4, key: 'auto', glide: 0.26,
-    chords: chordsFromText(chordText).chords,
+    tempo: 90, beatsPerChord: 4, key: 'auto', glide: 0.26, glideStyle: { ...DEFAULT_STYLE },
+    chords: chordsFromText(chordText).chords.map(c => ({ id: shortId(), ...c })),
     text: { hook: '', question: '', reveal: '', watermark: '' },
     tracks: {
-      voices: { ...mix(0.8), sound: 'pad' },
+      voices: { ...mix(0.8), sound: 'pad', split: { bass: null, inner: null, top: null } },
       chords: { ...mix(0.8), instrument: 'none' },
       bass: { ...mix(0.8), instrument: 'bass', pattern: 'off' },
       drums: { ...mix(0.7), pattern: 'off' },
@@ -114,6 +121,13 @@ const MIGRATIONS = {
   },
 };
 
+MIGRATIONS[2] = old => ({
+  ...old, version: 3,
+  glideStyle: { ...DEFAULT_STYLE },
+  chords: (Array.isArray(old.chords) ? old.chords : []).map(c => (c && typeof c === 'object' ? { ...c, id: shortId() } : c)),
+  tracks: { ...(old.tracks || {}), voices: { ...((old.tracks && old.tracks.voices) || {}), split: { bass: null, inner: null, top: null } } },
+});
+
 export class ProjectError extends Error {}
 
 /**
@@ -139,7 +153,7 @@ export function normalizeProject(raw) {
     if (!c || typeof c.sym !== 'string') return null;
     const one = chordsFromText(c.sym).chords[0]; if (!one) return null;
     const beats = typeof c.beats === 'number' && isFinite(c.beats) ? clamp(c.beats, 0.25, 64) : null;
-    return { sym: one.sym, beats, section: str(c.section, '', 60) };
+    return { id: str(c.id, '', 16) || shortId(), sym: one.sym, beats, section: str(c.section, '', 60) };
   }).filter(Boolean);
   const notes = (Array.isArray(t.melody && t.melody.notes) ? t.melody.notes : []).slice(0, 4096)
     .filter(n => n && [n.t, n.d, n.m].every(x => typeof x === 'number' && isFinite(x)) && n.d > 0 && n.t >= 0)
@@ -150,10 +164,15 @@ export function normalizeProject(raw) {
     id: str(p.id, '', 64) || newId(), name: str(p.name, '', 80).trim() || 'Untitled',
     createdAt: num(p.createdAt, d.createdAt), updatedAt: num(p.updatedAt, d.updatedAt),
     tempo: clamp(num(p.tempo, 90), 20, 300), beatsPerChord: clamp(num(p.beatsPerChord, 4), 0.25, 64),
-    key, glide: clamp(num(p.glide, 0.26), 0.02, 2), chords,
+    key, glide: clamp(num(p.glide, 0.26), 0.02, 2), chords: uniqueIds(chords),
+    glideStyle: {
+      curve: GLIDE_CURVES.includes(p.glideStyle && p.glideStyle.curve) ? p.glideStyle.curve : DEFAULT_STYLE.curve,
+      vibrato: clamp(num(p.glideStyle && p.glideStyle.vibrato, DEFAULT_STYLE.vibrato), 0, 1),
+      swell: clamp(num(p.glideStyle && p.glideStyle.swell, DEFAULT_STYLE.swell), 0, 1),
+    },
     text: { hook: str(p.text && p.text.hook), question: str(p.text && p.text.question), reveal: str(p.text && p.text.reveal), watermark: str(p.text && p.text.watermark, '', 60) },
     tracks: {
-      voices: { ...mixOf(t.voices, d.tracks.voices), sound: str(t.voices && t.voices.sound, 'pad', 24) || 'pad' },
+      voices: { ...mixOf(t.voices, d.tracks.voices), sound: str(t.voices && t.voices.sound, 'pad', 24) || 'pad', split: splitOf(t.voices && t.voices.split) },
       chords: { ...mixOf(t.chords, d.tracks.chords), instrument: str(t.chords && t.chords.instrument, 'none', 24) || 'none' },
       bass: { ...mixOf(t.bass, d.tracks.bass), instrument: 'bass', pattern: t.bass && t.bass.pattern in BASS_PATTERNS ? t.bass.pattern : 'off' },
       drums: { ...mixOf(t.drums, d.tracks.drums), pattern: t.drums && t.drums.pattern in DRUM_PATTERNS ? t.drums.pattern : 'off' },
@@ -161,6 +180,9 @@ export function normalizeProject(raw) {
     },
   };
 }
+
+const uniqueIds = chords => { const seen = new Set(); return chords.map(c => { let id = c.id; while (seen.has(id)) id = shortId(); seen.add(id); return id === c.id ? c : { ...c, id }; }); };
+const splitOf = s => { const g = k => (s && typeof s[k] === 'string' && s[k] ? s[k].slice(0, 24) : null); return { bass: g('bass'), inner: g('inner'), top: g('top') }; };
 
 /** Parse the text of a .json project file. Throws ProjectError with a readable message. */
 export function parseProjectFile(text) {

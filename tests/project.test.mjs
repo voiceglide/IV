@@ -79,3 +79,19 @@ test('history: undo, redo, merge of rapid edits, limit', () => {
 test('file names are safe', () => {
   assert.equal(fileBase({ name: 'Été / 2: “Mix”!' }), 't-2-mix'); assert.equal(fileBase({ name: '///' }), 'project');
 });
+
+test('version 2 projects migrate to 3: chords get unique ids, glide style and voice split get defaults', () => {
+  const v2 = { format: FORMAT, version: 2, id: 'x', name: 'Two', tempo: 100, chords: [{ sym: 'C', beats: null, section: '' }, { sym: 'G', beats: 2, section: '' }], tracks: { voices: { sound: 'strings', volume: 0.5 } } };
+  const p = normalizeProject(v2);
+  assert.equal(p.version, VERSION);
+  assert.equal(p.chords.length, 2); assert.ok(p.chords.every(c => c.id)); assert.notEqual(p.chords[0].id, p.chords[1].id);
+  assert.deepEqual(p.glideStyle, { curve: 'eased', vibrato: 0.5, swell: 0.5 });
+  assert.deepEqual(p.tracks.voices.split, { bass: null, inner: null, top: null });
+  assert.equal(p.tracks.voices.sound, 'strings');
+});
+
+test('chord ids survive normalisation and duplicates are made unique', () => {
+  const p = normalizeProject({ format: FORMAT, version: VERSION, chords: [{ id: 'a', sym: 'C' }, { id: 'a', sym: 'G' }], glideStyle: { curve: 'bad', vibrato: 9 } });
+  assert.equal(p.chords[0].id, 'a'); assert.notEqual(p.chords[1].id, 'a');
+  assert.equal(p.glideStyle.curve, 'eased'); assert.equal(p.glideStyle.vibrato, 1);
+});

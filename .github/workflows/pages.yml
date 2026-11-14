@@ -4,6 +4,7 @@ name: "Deploy to Pages"
 on:
   push:
     branches: [main, release]
+  pull_request:
   workflow_dispatch:
 
 permissions:
@@ -27,17 +28,24 @@ jobs:
       - run: npm ci
       - run: npm run lint
       - run: npm run types
-      - run: npm test
       - run: npm run build
         env:
           FEEDBACK_URL: ${{ vars.FEEDBACK_URL }}
+      - run: npm test
+      - run: npm install --no-save playwright@1.49.1 && npx playwright install --with-deps chromium
+      - run: npm run test:browser
+        env:
+          REQUIRE_BROWSER_TESTS: '1'
       - uses: actions/configure-pages@v5
+        if: github.event_name != 'pull_request'
       - uses: actions/upload-pages-artifact@v3
+        if: github.event_name != 'pull_request'
         with:
           path: dist
 
   deploy:
     needs: build
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     environment:
       name: github-pages

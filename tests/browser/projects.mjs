@@ -61,6 +61,6 @@ export async function run(browser, url, r) {
   const it = page.locator('#projectsSheet .pj-item:has-text("Old")'); await it.locator('.pj-more').click();
   const [dl] = await Promise.all([page.waitForEvent('download'), it.locator('button:has-text("Export file")').click()]);
   const file = JSON.parse(await readFile(await dl.path(), 'utf8'));
-  r.check(dl.suggestedFilename() === 'old.json' && file.chords.map(c => c.sym).join(' ') === 'C F G' && file.version === 2, 'Export file downloads the project in the current format');
+  r.check(dl.suggestedFilename() === 'old.json' && file.chords.map(c => c.sym).join(' ') === 'C F G' && file.version === 3, 'Export file downloads the project in the current format');
   await context.close();
 }

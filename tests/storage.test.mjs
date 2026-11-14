@@ -38,7 +38,7 @@ test('a stored version 1 record is migrated when read', async () => {
     open.onsuccess = () => { const tx = open.result.transaction('projects', 'readwrite'); tx.objectStore('projects').put(raw); tx.oncomplete = res; tx.onerror = rej; };
   });
   const p = await s.get('old1');
-  assert.equal(p.version, 2); assert.equal(p.id, 'old1'); assert.equal(p.name, 'Old');
+  assert.equal(p.version, 3); assert.equal(p.id, 'old1'); assert.equal(p.name, 'Old');
   assert.equal(p.chords.length, 3); assert.equal(p.tempo, 100);
   assert.equal((await s.list())[0].chordCount, 3);
 });
