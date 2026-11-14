@@ -71,15 +71,14 @@ export function initDrums(app, container) {
     store.update(p => { p.tracks.drums.steps = emptySteps(); p.tracks.drums.pattern = 'custom'; }, 'drums:clear');
     toast('Drums cleared.', { action: 'Undo', onAction: () => store.undo() });
   } });
-  const swingOut = h('output', { class: 'dr-swing-val' });
+  const swingOut = h('output', { class: 'dr-swing-val', for: 'drSwing' });
   const swing = h('input', { type: 'range', min: 0, max: DRUM_SWING_MAX, step: 0.05, value: 0, 'aria-label': 'Swing: how late the off-beat sixteenths are played',
     onInput: e => { store.update(p => { p.tracks.drums.swing = +e.target.value; }, 'drums:swing'); } });
   const info = h('p', { class: 'hint', text: 'Tap a square to add a hit, tap it again to remove it. Press and hold a hit to make it soft, normal or accent. Tap a name to hear it.' });
   container.classList.add('dr-pane');
   container.append(
     h('div', { class: 'dr-bar' }, preset, clearBtn),
-    h('div', { class: 'dr-bar', role: 'group', 'aria-label': 'Strength of new hits' }, h('span', { class: 'dr-cap', text: 'New hits' }), brushBtns),
-    h('div', { class: 'dr-bar' }, h('label', { class: 'dr-cap', for: 'drSwing', text: 'Swing' }), swing, swingOut),
+    h('div', { class: 'dr-bar' }, h('div', { class: 'dr-brushes', role: 'group', 'aria-label': 'Strength of new hits' }, brushBtns), swing, swingOut),
     scroller, info);
   swing.id = 'drSwing';
 
@@ -87,11 +86,8 @@ export function initDrums(app, container) {
   function build() {
     cells = [];
     const frag = document.createDocumentFragment();
-    const top = h('div', { class: 'dr-row dr-top', role: 'row', 'aria-rowindex': 1 }, h('div', { class: 'dr-name', role: 'columnheader', 'aria-label': 'Sound' }));
-    for (let s = 0; s < DRUM_STEPS; s++) top.append(h('div', { class: 'dr-num' + (s % 4 ? '' : ' beat'), role: 'columnheader', text: s % 4 ? '·' : String(s / 4 + 1), 'aria-label': `Step ${s + 1}` }));
-    frag.append(top);
     DRUM_LANES.forEach((lane, li) => {
-      const row = h('div', { class: 'dr-row', role: 'row', 'aria-rowindex': li + 2 });
+      const row = h('div', { class: 'dr-row', role: 'row', 'aria-rowindex': li + 1 });
       row.append(h('div', { class: 'dr-name', role: 'rowheader' }, h('button', { type: 'button', class: 'dr-hear', text: DRUM_LANE_LABEL[lane], 'aria-label': `${DRUM_LANE_LABEL[lane]}: tap to hear`, onClick: () => hear(lane, 2) })));
       const r = [];
       for (let s = 0; s < DRUM_STEPS; s++) {
@@ -115,7 +111,7 @@ export function initDrums(app, container) {
       }
     });
     const d = store.project.tracks.drums;
-    swing.value = String(d.swing); swingOut.textContent = d.swing ? Math.round(d.swing / DRUM_SWING_MAX * 100) + '%' : 'none';
+    swing.value = String(d.swing); swingOut.textContent = 'Swing ' + (d.swing ? Math.round(d.swing / DRUM_SWING_MAX * 100) + '%' : 'off');
     const total = DRUM_LANES.reduce((n, l) => n + g[l].filter(Boolean).length, 0);
     info.textContent = (total ? `${total} ${total === 1 ? 'hit' : 'hits'} in the bar. ` : 'The bar is empty. ') + 'Tap a square to add a hit, tap it again to remove it. Press and hold a hit to make it soft, normal or accent. Tap a name to hear it.';
   }

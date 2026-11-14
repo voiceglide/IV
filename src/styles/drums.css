@@ -1,16 +1,17 @@
 /* The Drums tab: a step grid. Rows are sounds, columns are the 16 steps of one bar. */
-.dr-pane{display:flex;flex-direction:column;gap:8px}
+.dr-pane{display:flex;flex-direction:column;gap:4px}
 .dr-pane[hidden]{display:none!important}
 .dr-bar{display:flex;gap:6px;align-items:center;min-height:44px}
 .dr-bar select{flex:1;min-width:0}
 .dr-bar .dr-cap{flex:none;font-size:13.5px;font-weight:700;color:var(--muted)}
 .dr-bar input[type=range]{flex:1;min-width:0;min-height:44px}
-.dr-bar .dr-swing-val{flex:none;min-width:3.2em;text-align:right;font-size:13.5px;font-weight:700;color:var(--muted)}
+.dr-brushes{flex:none;display:flex;gap:4px}
+.dr-brushes button{flex:none;padding:0 8px;font-size:13px}
+.dr-bar .dr-swing-val{flex:none;min-width:4.6em;text-align:right;font-size:13.5px;font-weight:700;color:var(--muted)}
 .dr-bar button{flex:none;min-height:44px;padding:0 14px}
-.dr-bar button.dr-brush{flex:1}
 .dr-bar button[aria-pressed="true"]{background:var(--ink);color:var(--on-ink)}
-.dr-scroll{overflow-x:auto;overflow-y:hidden;overscroll-behavior-x:contain;border:1.5px solid var(--line);border-radius:12px;background:var(--field);max-width:100%}
-.dr-grid{--dr-name:76px;display:grid;grid-template-columns:var(--dr-name) repeat(16,44px);grid-auto-rows:44px;width:max-content;position:relative;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
+.dr-scroll{scroll-padding-left:64px;overflow-x:auto;overflow-y:hidden;overscroll-behavior-x:contain;border:1.5px solid var(--line);border-radius:12px;background:var(--field);max-width:100%}
+.dr-grid{--dr-name:64px;display:grid;grid-template-columns:var(--dr-name) repeat(16,44px);grid-template-rows:repeat(6,44px);width:max-content;position:relative;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
 .dr-row{display:contents}
 .dr-name{position:sticky;left:0;z-index:2;background:var(--card);border-right:1.5px solid var(--line);display:flex;align-items:stretch}
 .dr-name button.dr-hear{all:unset;box-sizing:border-box;flex:1;display:flex;align-items:center;justify-content:center;padding:0 4px;font:inherit;font-size:12.5px;font-weight:800;color:var(--ink);cursor:pointer;text-align:center}
@@ -25,3 +26,13 @@
 .dr-cell.on.l3::after{opacity:1;box-shadow:inset 0 0 0 3px var(--ink)}
 .dr-cell:focus-visible{outline:3px solid var(--pink);outline-offset:-3px;z-index:1}
 .dr-playhead{position:absolute;top:0;bottom:0;left:var(--dr-name);width:44px;background:var(--ink);opacity:.14;pointer-events:none;z-index:1}
+/* the Drums tab needs its whole grid in view: the panel grows to fit it and the preview gives way (it may shrink below its usual minimum), so Play stays reachable.
+   Same on any screen; no main.js or style.css change needed. */
+.editp:has(#paneDrums:not([hidden])){max-height:none}
+.app:has(#paneDrums:not([hidden])) .stage{min-height:96px}
+.editp:has(#paneDrums:not([hidden])) #paneDrums .hint{display:none}
+.editp:has(#paneDrums:not([hidden])) .pane{padding-top:4px;padding-bottom:6px}
+/* on a phone the chord strip steps aside while Drums is open: the grid needs the height (Play, Edit and Export stay) */
+@media (max-width:899px) and (min-height:561px){
+  .app:has(#edit:not([hidden]) #paneDrums:not([hidden])) .strip{display:none}
+}
