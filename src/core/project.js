@@ -1,6 +1,6 @@
 // Project data: the one JSON document that describes a piece. Versioned, with migrations from older files.
 // Pure functions, no DOM, no audio, no storage.
-import { parseProgression, parseChord, chordToText, MAX_CHORDS } from './theory.js';
+import { parseProgression, parseChord, chordToText, cleanSection, MAX_CHORDS } from './theory.js';
 
 export const FORMAT = 'chord-project';
 export const VERSION = 4;
@@ -91,11 +91,9 @@ export function chordsFromText(text) {
     chords: p.chords.map(c => ({ sym: chordToText(Object.assign({}, c, { beats: null })), beats: c.beats || null, section: c.secStart ? c.section : '' })),
     bad: p.bad,
     error: p.error || '',
+    first: p.first ? p.first.map(c => ({ sym: chordToText(Object.assign({}, c, { beats: null })), beats: c.beats || null, section: c.secStart ? c.section : '' })) : undefined,
   };
 }
-
-/** Section names live in "[...]" in the text, so they may not contain brackets or line breaks. */
-const cleanSection = x => String(x).replace(/[[\]\r\n]+/g, ' ').trim();
 
 /** Chord items → text, one section per line. */
 export function chordsToText(chords) {
@@ -145,12 +143,20 @@ export function exampleProject(i = 0) {
 // Files with no version at all are treated as version 1.
 const SOUND_V1 = { pad: ['none', false], both: ['softpiano', false], piano: ['softpiano', true], crystal: ['crystal', false], arp: ['arp', false], omni: ['strumharp', false] };
 
+/** A key is a string, or a number in old files; anything else (an object with its own toString, say) is no key. */
+const keyText = k => (typeof k === 'string' || typeof k === 'number' ? String(k) : '');
+const MSG_CUT = 'This project had more than ' + MAX_CHORDS + ' chords. Only the first ' + MAX_CHORDS + ' were kept.';
+
 const MIGRATIONS = {
-  1(old) {
-    const p = newProject(str(old.name, 'Imported project', 80), str(old.prog, '', 20000));
+  1(old, notes) {
+    const p = newProject(str(old.name, 'Imported project', 80), '');
+    const parsed = chordsFromText(str(old.prog, '', 20000));
+    const kept = parsed.error && parsed.first ? parsed.first : parsed.chords;
+    if (parsed.error) notes.push(parsed.first ? MSG_CUT : parsed.error);
+    p.chords = kept.map(c => ({ id: shortId(), ...c }));
     p.tempo = num(typeof old.bpm === 'string' ? parseFloat(old.bpm) : old.bpm, 90);
     p.beatsPerChord = num(typeof old.beats === 'string' ? parseFloat(old.beats) : old.beats, 4);
-    p.key = str(String(old.key === undefined ? 'auto' : old.key), 'auto', 8);
+    p.key = str(keyText(old.key), 'auto', 8) || 'auto';
     p.glide = num(typeof old.glide === 'string' ? parseFloat(old.glide) : old.glide, 0.26);
     p.text = { hook: str(old.hook), question: str(old.question || old.q), reveal: str(old.title), watermark: str(old.handle) };
     const [instrument, muteVoices] = typeof old.sound === 'string' && Object.hasOwn(SOUND_V1, old.sound) ? SOUND_V1[old.sound] : SOUND_V1.pad;
@@ -184,7 +190,7 @@ export class ProjectError extends Error {}
  * written for the person using the app when the data cannot be a project at all.
  * @returns {Project}
  */
-export function normalizeProject(raw) {
+export function normalizeProject(raw, notices = []) {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new ProjectError('This file is not a project.');
   let v = raw.version === undefined ? 1 : raw.version;
   if (typeof v !== 'number' || !Number.isInteger(v) || v < 1) throw new ProjectError('This file is not a project.');
@@ -193,13 +199,15 @@ export function normalizeProject(raw) {
   // a file that says version 1 but already holds a chord list is a newer file with a wrong stamp: read it as it is
   if (v === 1 && raw.prog === undefined && Array.isArray(raw.chords)) v = 2;
   let p = raw;
-  while (v < VERSION) { p = MIGRATIONS[v](p); v++; }
+  while (v < VERSION) { p = MIGRATIONS[v](p, notices); v++; }
   if (raw.version === VERSION && raw.format !== FORMAT) throw new ProjectError('This file is not a project.');
 
   const d = newProject();
   const mixOf = (m, dm) => ({ volume: clamp(num(m && m.volume, dm.volume), 0, 1), pan: clamp(num(m && m.pan, 0), -1, 1), mute: !!(m && m.mute), solo: !!(m && m.solo) });
   const t = p.tracks && typeof p.tracks === 'object' ? p.tracks : {};
-  const chords = (Array.isArray(p.chords) ? p.chords : []).slice(0, MAX_CHORDS).map(c => {
+  const list = Array.isArray(p.chords) ? p.chords : [];
+  if (list.length > MAX_CHORDS && !notices.includes(MSG_CUT)) notices.push(MSG_CUT);
+  const chords = list.slice(0, MAX_CHORDS).map(c => {
     if (!c || typeof c.sym !== 'string') return null;
     const one = parseChord(c.sym.slice(0, 40)); if (!one) return null;
     const beats = typeof c.beats === 'number' && isFinite(c.beats) ? clamp(c.beats, 0.25, 64) : null;
@@ -208,7 +216,7 @@ export function normalizeProject(raw) {
   const notes = (Array.isArray(t.melody && t.melody.notes) ? t.melody.notes : []).slice(0, 4096)
     .filter(n => n && [n.t, n.d, n.m].every(x => typeof x === 'number' && isFinite(x)) && n.d > 0 && n.t >= 0)
     .map(n => ({ t: clamp(n.t, 0, NOTE_MAX_T), d: clamp(n.d, NOTE_MIN_D, NOTE_MAX_D), m: clamp(Math.round(n.m), 24, 108) }));
-  const key = /^(auto|([0-9]|1[01])(:m)?)$/.test(String(p.key)) ? String(p.key) : 'auto';
+  const keyStr = keyText(p.key), key = /^(auto|([0-9]|1[01])(:m)?)$/.test(keyStr) ? keyStr : 'auto';
   return {
     format: FORMAT, version: VERSION,
     id: str(p.id, '', 64) || newId(), name: str(p.name, '', 80).trim() || 'Untitled',
@@ -235,11 +243,11 @@ export function normalizeProject(raw) {
 const uniqueIds = chords => { const seen = new Set(); return chords.map(c => { let id = c.id; while (seen.has(id)) id = shortId(); seen.add(id); return id === c.id ? c : { ...c, id }; }); };
 const splitOf = s => { const g = k => (s && typeof s[k] === 'string' && s[k] ? s[k].slice(0, 24) : null); return { bass: g('bass'), inner: g('inner'), top: g('top') }; };
 
-/** Parse the text of a .json project file. Throws ProjectError with a readable message. */
-export function parseProjectFile(text) {
+/** Parse the text of a .json project file. Throws ProjectError with a readable message. `notes` collects plain-English notices about what was cut or changed. */
+export function parseProjectFile(text, notes = []) {
   let raw;
   try { raw = JSON.parse(String(text).replace(/^\uFEFF/, '')); } catch (e) { throw new ProjectError('This file could not be read: it is not valid JSON. Pick a project file exported from this app.'); }
-  return normalizeProject(raw);
+  return normalizeProject(raw, notes);
 }
 
 export function serializeProject(project) { return JSON.stringify(project, null, 1); }
