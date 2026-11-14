@@ -10,6 +10,7 @@ import { initMelody } from './melody.js';
 import { initDrums } from './drums.js';
 import { initExports } from './exports.js';
 import { initMenu } from './menu.js';
+import { applyTheme, getThemePref } from './theme.js';
 import { initProjects } from './projects.js';
 import { initFeedback } from './feedback.js';
 import { initPwa } from './pwa.js';
@@ -26,6 +27,7 @@ const wideScreen = () => window.matchMedia('(min-width:900px) and (min-height:56
 const store = createStore({ editOpen: wideScreen() });
 const engine = createEngine();
 const renderer = createRenderer($('cv'));
+applyTheme(getThemePref());
 renderer.followSystem();
 /** @type {any} */ let song = null;
 let dirty = true, busy = false;

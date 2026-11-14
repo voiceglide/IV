@@ -2,6 +2,7 @@
 import { h, ICON } from './dom.js';
 import { openSheet } from './sheet.js';
 import { APP_NAME } from '../config.js';
+import { getThemePref, setThemePref } from './theme.js';
 
 export function initMenu() {
   /** @type {{label:string, icon:string, run:()=>void, order:number}[]} */
@@ -32,6 +33,15 @@ export function initMenu() {
       h('dl', { class: 'keys keysh' }, keys.map(([k, v]) => [h('dt', null, h('kbd', { text: k })), h('dd', { text: v })])),
       h('p', { class: 'hint', text: `${APP_NAME} · All rights reserved. Uses the Inter typeface (SIL Open Font License) and mp4-muxer (MIT License).` })) });
   }
+  function openAppearance() {
+    const cur = getThemePref();
+    const opts = [['light', 'Day'], ['dark', 'Night'], ['auto', 'Like my phone']];
+    const group = h('div', { class: 'xseg', role: 'radiogroup', 'aria-label': 'Colours' }, opts.map(([v, t]) => h('label', null,
+      h('input', { type: 'radio', name: 'theme', value: v, checked: v === cur, onChange: () => setThemePref(v) }), h('span', null, h('b', { text: t })))));
+    openSheet({ title: 'Appearance', id: 'themeSheet', body: h('div', { class: 'stack' }, h('div', { class: 'xpick' }, h('div', { class: 'xlabel', text: 'Colours' }), group),
+      h('p', { class: 'hint', text: 'Day is the default. Like my phone follows the light or dark setting of your device. This only changes the app; exported videos have their own Look.' })) });
+  }
+  menu.add({ label: 'Appearance', icon: ICON.right, run: openAppearance, order: 20 });
   menu.add({ label: 'Help', icon: ICON.help, run: openHelp, order: 10 });
   return { menu, openHelp };
 }

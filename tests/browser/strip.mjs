@@ -134,6 +134,7 @@ export async function run(browser, url, r) {
 
   // ---- dark theme, borders
   const d = await openApp(browser, url, r, { viewport: { width: 375, height: 667 }, mobile: true });
+  await d.page.evaluate(() => document.documentElement.removeAttribute('data-theme')); // Auto: follows the system
   await d.page.emulateMedia({ colorScheme: 'dark' });
   const dark = await d.page.evaluate(() => getComputedStyle(document.body).backgroundColor);
   r.check(dark === 'rgb(28, 24, 20)', 'dark theme follows the system setting', dark);

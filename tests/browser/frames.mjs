@@ -89,7 +89,7 @@ export async function run(browser, url, r) {
 async function previewTheme(page, r) {
   const state = () => page.evaluate(() => { const rd = /** @type {any} */(window).__app.renderer, s = /** @type {any} */(window).__app.song(), g = rd.canvas.getContext('2d');
     rd.draw(s, s.vs); const p = g.getImageData(2, 2, 1, 1).data; return { theme: rd.theme, lum: (p[0] + p[1] + p[2]) / 3, size: [rd.canvas.width, rd.canvas.height] }; });
-  await page.evaluate(() => { const rd = /** @type {any} */(window).__app.renderer; rd.configure({ w: 1080, h: 1920, theme: 'paper' }); window.__stopFollow = rd.followSystem(); });
+  await page.evaluate(() => { const rd = /** @type {any} */(window).__app.renderer; rd.configure({ w: 1080, h: 1920, theme: 'paper' }); window.__stopFollow = rd.followSystem(); document.documentElement.removeAttribute('data-theme'); /* Auto: the system setting decides */ });
   await page.emulateMedia({ colorScheme: 'light' }); await page.waitForTimeout(100);
   let st = await state(); r.check(st.theme === 'paper' && st.lum > 150 && st.size.join('x') === '1080x1920', 'preview: light app theme draws the paper look at 9:16', JSON.stringify(st));
   await page.emulateMedia({ colorScheme: 'dark' }); await page.waitForTimeout(100);
