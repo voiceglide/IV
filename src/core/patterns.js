@@ -37,10 +37,13 @@ export function chordEvents(song, style, span) {
     const v = song.v[i], notes = chordNotes(song, i), len = end - start;
     const upper = [...new Set(v.upper)].sort((a, b) => a - b);
     if (style === 'tied') {
-      // a note shared with the next chords keeps ringing instead of being struck again
+      // a note shared with the next chords keeps ringing instead of being struck again.
+      // In a loop (song.loop) a note that every chord of the cycle shares is struck again at each cycle start, so it never runs out.
+      const cyc = song.n, whole = m => !!song.loop && Array.from({ length: cyc }, (_, c) => chordNotes(song, cyc + c).includes(m)).every(Boolean);
       for (const m of notes) {
-        if (!first && i > 0 && chordNotes(song, i - 1).includes(m)) continue;
-        let j = i + 1; while (j < n && chordNotes(song, j).includes(m)) j++;
+        const again = i % cyc === 0 && whole(m);
+        if (!first && i > 0 && chordNotes(song, i - 1).includes(m) && !again) continue;
+        let j = i + 1; while (j < n && chordNotes(song, j).includes(m) && !(song.loop && j % cyc === 0 && whole(m))) j++;
         out.push({ t: start, d: (j < n ? S[j] : song.end + 1.5) - start, m, v: m < 52 ? 1 : 0.9 });
       }
     } else if (style === 'block') {
