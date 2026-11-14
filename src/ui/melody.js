@@ -39,9 +39,8 @@ export function initMelody(app) {
   } });
   const zoomOut = btn('Zoom out', '−', () => zoom(-1)), zoomIn = btn('Zoom in', '+', () => zoom(1));
   const fitBtn = h('button', { class: 'small ghost', type: 'button', text: 'Fit', 'aria-label': 'Fit the whole loop in view', onClick: () => fit() });
-  const zoomBar = h('div', { class: 'mel-bar mel-zoom', role: 'group', 'aria-label': 'Zoom' }, h('span', { class: 'mel-len', text: 'Zoom' }), zoomOut, zoomIn, fitBtn);
   const info = h('p', { class: 'hint' });
-  pane.append(h('div', { class: 'mel-bar' }, h('span', { class: 'mel-len', text: 'Tap a square to add a note' }), playBtn, clearBtn), noteBar, scroller, zoomBar, info);
+  pane.append(h('div', { class: 'mel-bar' }, h('span', { class: 'mel-len', text: 'Tap a square to add a note' }), zoomOut, zoomIn, fitBtn, playBtn, clearBtn), noteBar, scroller, info);
   function setCell(px) { const c = Math.max(3, Math.min(ZOOMS[ZOOMS.length - 1], Math.floor(px + 1e-6))); if (c === CELL) return; const mid = (scroller.scrollLeft + scroller.clientWidth / 2 - KEYW) / CELL; CELL = c; render(); scroller.scrollLeft = Math.max(0, mid * CELL + KEYW - scroller.clientWidth / 2); }
   function zoom(dir) { const i = ZOOMS.findIndex(z => z >= CELL - 0.5); setCell(ZOOMS[Math.max(0, Math.min(ZOOMS.length - 1, (i < 0 ? ZOOMS.length - 1 : i) + dir))]); }
   function fit() { const song = app.song(); if (!song) return; const cols = Math.min(MAX_COLS, Math.round(song.beats / STEP)); setCell((scroller.clientWidth - KEYW - 2) / cols); scroller.scrollLeft = 0; }
@@ -127,6 +126,26 @@ export function initMelody(app) {
     cell.setAttribute('aria-label', `${name(song, m)}, beat ${Math.floor(t) + 1}${t % 1 ? ' and a half' : ''}${n ? `, note of ${n.d === 1 ? '1 beat' : n.d + ' beats'}${sel && same(sel.t, n.t) && sel.m === n.m ? ', selected' : ''}` : ', empty'}`);
   });
 
+  function recenterView(song, rs, notes, chordAt) {
+    {
+      // vertically: on the melody if there is one, else on the chord tone of the first chord nearest the middle of the keyboard (C4–C5);
+      // horizontally: on the play head if it is playing, else on the first note
+      let r = -1;
+      if (notes.length) r = rs.indexOf(notes[0].m);
+      if (r < 0) {
+        const ch = song.chords[chordAt(0)], tones = rs.map((m, k) => [m, k]).filter(([m]) => Q[ch.q][0].some(x => (ch.root + x) % 12 === m % 12));
+        const best = tones.sort((a, b) => Math.abs(a[0] - 64) - Math.abs(b[0] - 64))[0]; r = best ? best[1] : Math.floor(rs.length / 2);
+      }
+      const rowEl = cellEls[r] && cellEls[r][0];
+      if (rowEl) scroller.scrollTop = Math.max(0, rowEl.offsetTop + ROW / 2 - scroller.clientHeight / 2);
+      // with no melody yet, C4 (or the lowest row there is) always stays in view
+      const low = cellEls[Math.max(0, rs.indexOf(Math.max(60, rs[rs.length - 1])))];
+      if (!notes.length && low && low[0] && low[0].offsetTop + ROW > scroller.scrollTop + scroller.clientHeight) scroller.scrollTop = low[0].offsetTop + ROW - scroller.clientHeight;
+      const beats = lastBeats >= 0 ? lastBeats : notes.length ? notes[0].t : 0;
+      scroller.scrollLeft = Math.max(0, beats / STEP * CELL - scroller.clientWidth / 4);
+    }
+  }
+
   let key = '';
   function render(recenter = false) {
     const song = app.song(), p = store.project;
@@ -136,14 +155,15 @@ export function initMelody(app) {
     noteBar.hidden = !cur;
     if (cur) lenLabel.textContent = `${name(song, cur.m)} · ${cur.d === 1 ? '1 beat' : cur.d + ' beats'}`;
     const sig = JSON.stringify([CELL, cols, rs, notes, sel, song.chords.slice(0, song.n).map(c => c.label + c.beats), p.beatsPerChord]);
-    if (sig === key) return; key = sig;
+    const chordAt = c => idxAt(song, song.cycle + c * STEP * song.spb + 1e-6) % song.n;
+    if (sig === key) { if (recenter) recenterView(song, rs, notes, chordAt); return; }
+    key = sig;
     const hadFocus = grid.contains(document.activeElement);
     if (rc.r < 0 || rc.r >= rs.length || rc.c >= cols) { const first = notes.length ? rs.indexOf(notes[0].m) : rs.length - 1 - 12; rc = { r: Math.max(0, first), c: notes.length ? Math.round(notes[0].t / STEP) : 0 }; }
     const frag = document.createDocumentFragment();
     grid.style.gridTemplateColumns = `${KEYW}px repeat(${cols}, ${CELL}px)`; grid.style.setProperty('--cell', CELL + 'px');
     grid.style.gridAutoRows = `${ROW}px`;
     grid.setAttribute('aria-rowcount', String(rs.length)); grid.setAttribute('aria-colcount', String(cols));
-    const chordAt = c => idxAt(song, song.cycle + c * STEP * song.spb + 1e-6) % song.n;
     const hrow = h('div', { class: 'mel-row', role: 'row' }, h('div', { class: 'mel-corner', role: 'presentation' }));
     let last = -1;
     for (let c = 0; c < cols; c++) { const i = chordAt(c); hrow.append(h('div', { role: 'columnheader', class: 'mel-head' + (c % 2 ? '' : ' beat') + (c % BAR_COLS ? '' : ' bar') + (i !== last ? ' new' : ''), text: i !== last ? song.chords[i].label : '' })); last = i; }
@@ -173,20 +193,7 @@ export function initMelody(app) {
     if (hadFocus) { const el = cellEls[rc.r] && cellEls[rc.r][rc.c]; if (el) el.focus({ preventScroll: true }); }
     const hidden = notes.filter(n => !rs.includes(n.m)).length;
     info.textContent = `${notes.length} ${notes.length === 1 ? 'note' : 'notes'}. Squares with a dot belong to the chord of the moment: they always sound right. Tap a piano key to hear it.` + (hidden ? ` ${hidden} ${hidden === 1 ? 'note is' : 'notes are'} above or below this view.` : '') + (song.beats / STEP > MAX_COLS ? ' Only the first part of a very long loop can be edited here.' : '');
-    if (recenter) {
-      // vertically: on the melody if there is one, else on the chord tone of the first chord nearest the middle of the keyboard (C4–C5);
-      // horizontally: on the play head if it is playing, else on the first note
-      let r = -1;
-      if (notes.length) r = rs.indexOf(notes[0].m);
-      if (r < 0) {
-        const ch = song.chords[chordAt(0)], tones = rs.map((m, k) => [m, k]).filter(([m]) => Q[ch.q][0].some(x => (ch.root + x) % 12 === m % 12));
-        const best = tones.sort((a, b) => Math.abs(a[0] - 66) - Math.abs(b[0] - 66))[0]; r = best ? best[1] : Math.floor(rs.length / 2);
-      }
-      const rowEl = cellEls[r] && cellEls[r][0];
-      if (rowEl) scroller.scrollTop = Math.max(0, rowEl.offsetTop + ROW / 2 - scroller.clientHeight / 2);
-      const beats = lastBeats >= 0 ? lastBeats : notes.length ? notes[0].t : 0;
-      scroller.scrollLeft = Math.max(0, beats / STEP * CELL - scroller.clientWidth / 4);
-    }
+    if (recenter) recenterView(song, rs, notes, chordAt);
   }
   store.subscribe(why => { if (!why.tag.startsWith('mix:') && !why.tag.startsWith('text:')) render(); });
   document.getElementById('tabMelody').addEventListener('click', () => render(true));
