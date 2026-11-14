@@ -1,10 +1,11 @@
 // Patterns: turn the chords of a song into note events for each track. Pure functions, no audio.
 // All times are seconds on the song's own clock (the progression unrolled three times, see core/song.js).
 import { chordNotes } from './song.js';
+import { DRUM_LANES, DRUM_LEVEL, DRUM_STEPS, DRUM_SWING_MAX, effectiveSteps, emptySteps } from './project.js';
 
 /**
  * @typedef {{t:number, d:number, m:number, v:number}} NoteEvent   start, gate length, MIDI note, velocity 0…1
- * @typedef {{t:number, kind:'kick'|'snare'|'hat', v:number}} DrumEvent
+ * @typedef {{t:number, kind:'kick'|'snare'|'hat'|'open'|'clap'|'tom', v:number}} DrumEvent
  * @typedef {{lo:number, hi:number, from?:number}} Span  only chords that touch [lo, hi] are used; `from` is where
  *   playback starts: notes are never tied across it, so nothing that began earlier is needed.
  */
@@ -93,33 +94,47 @@ export function bassEvents(song, pattern, span) {
   return out;
 }
 
-/** @param {any} song @param {string} pattern @param {Span} span @returns {DrumEvent[]} */
-export function drumEvents(song, pattern, span) {
+/**
+ * Turn a one-bar grid into hits. The grid follows the bar clock, not the chords: it starts on the first beat of the
+ * loop and runs on in bars of 4 beats whatever the chords do (the last bar is cut where the loop ends, so every
+ * pass starts on the one). Off-beat sixteenths (steps 1, 3, 5 …) are late by swing × one step.
+ * @param {import('./project.js').DrumSteps} grid lane → 16 cells, 0 off … 3 accent
+ * @param {number} swing 0…0.6, fraction of a step
+ * @param {{cycle:number, spb:number, copies?:number, lo?:number, hi?:number, from?:number}} clock times in seconds on the song clock;
+ *   the loop is copy k = 0…copies-1 of one cycle, starting at k × cycle
+ * @returns {DrumEvent[]}
+ */
+export function gridEvents(grid, swing, clock) {
   /** @type {DrumEvent[]} */ const out = [];
-  if (!pattern || pattern === 'off') return out;
-  const beat = song.spb;
-  eachChord(song, span, (i, start, end) => {
-    let j = 0;
-    for (let t = start; t < end - EPS; t += beat, j++) {
-      const b = j % 4, half = t + beat / 2 < end - EPS;
-      if (pattern === 'soft') {
-        if (b === 0) out.push({ t, kind: 'kick', v: 0.7 });
-        out.push({ t, kind: 'hat', v: b === 0 ? 0.5 : 0.3 });
-      } else if (pattern === 'basic') {
-        if (b === 0 || b === 2) out.push({ t, kind: 'kick', v: b === 0 ? 1 : 0.8 }); else out.push({ t, kind: 'snare', v: 0.8 });
-        out.push({ t, kind: 'hat', v: 0.5 }); if (half) out.push({ t: t + beat / 2, kind: 'hat', v: 0.3 });
-      } else if (pattern === 'four') {
-        out.push({ t, kind: 'kick', v: b === 0 ? 1 : 0.85 });
-        if (b === 1 || b === 3) out.push({ t, kind: 'snare', v: 0.7 });
-        if (half) out.push({ t: t + beat / 2, kind: 'hat', v: 0.5 });
-      } else if (pattern === 'half') {
-        if (b === 0) out.push({ t, kind: 'kick', v: 1 });
-        if (b === 2) out.push({ t, kind: 'snare', v: 0.85 });
-        out.push({ t, kind: 'hat', v: b % 2 ? 0.3 : 0.5 });
+  const { cycle, spb } = clock, step = spb / 4, copies = clock.copies || 3;
+  const lo = clock.lo === undefined ? -Infinity : clock.lo, hi = clock.hi === undefined ? Infinity : clock.hi;
+  const late = Math.max(0, Math.min(DRUM_SWING_MAX, swing || 0)) * step;
+  if (!(cycle > 0) || !(step > 0)) return out;
+  for (let k = 0; k < copies; k++) {
+    for (let s = 0; s * step < cycle - EPS; s++) {
+      const i = s % DRUM_STEPS, t = k * cycle + s * step + (i % 2 ? late : 0);
+      if (t >= (k + 1) * cycle - EPS || t < lo || t > hi) continue;
+      if (clock.from !== undefined && t < clock.from - EPS) continue;
+      for (const lane of DRUM_LANES) {
+        const c = grid[lane] ? grid[lane][i] : 0;
+        if (c > 0) out.push({ t, kind: /** @type {any} */(lane), v: DRUM_LEVEL[Math.min(3, c)] });
       }
     }
-  });
-  return out;
+  }
+  return out.sort((a, b) => a.t - b.t);
+}
+
+/**
+ * The drum track: its grid on the bar clock. The pattern name decides which grid (`song.tracks.drums.steps` for 'custom').
+ * @param {any} song @param {string} pattern @param {Span} span @returns {DrumEvent[]}
+ */
+export function drumEvents(song, pattern, span) {
+  if (!pattern || pattern === 'off') return [];
+  const d = song.tracks && song.tracks.drums, own = pattern === 'custom';
+  if (own && !d) return [];
+  const grid = effectiveSteps({ pattern, steps: own ? d.steps : emptySteps() });
+  // the loop is the middle copy of the progression: copies start at 0, cycle, 2 × cycle
+  return gridEvents(grid, own ? d.swing : 0, { cycle: song.cycle, spb: song.spb, copies: 3, lo: span.lo, hi: span.hi, from: span.from });
 }
 
 /**

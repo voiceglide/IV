@@ -3,13 +3,14 @@
 import { parseProgression, parseChord, chordToText, MAX_CHORDS } from './theory.js';
 
 export const FORMAT = 'chord-project';
-export const VERSION = 3;
+export const VERSION = 4;
 
 /**
  * @typedef {{id:string, sym:string, beats:number|null, section:string}} ChordItem  id is stable across edits and reordering
  * @typedef {{curve:'straight'|'eased'|'scoop', vibrato:number, swell:number}} GlideStyle  vibrato and swell 0–1
  * @typedef {{bass:string|null, inner:string|null, top:string|null}} VoiceSplit  glide sound per voice group, null = use the main sound
  * @typedef {{volume:number, pan:number, mute:boolean, solo:boolean}} Mix
+ * @typedef {Record<string, number[]>} DrumSteps  per lane, 16 steps of one bar: 0 off, 1 soft, 2 normal, 3 accent
  * @typedef {{t:number, d:number, m:number}} MelodyNote  time and length in beats from the loop start, MIDI note
  * @typedef {Object} Project
  * @property {string} format
@@ -26,13 +27,45 @@ export const VERSION = 3;
  * @property {ChordItem[]} chords      the master chord track
  * @property {{hook:string, question:string, reveal:string, watermark:string}} text  on-screen text for the video
  * @property {{voices:Mix&{sound:string, split:VoiceSplit}, chords:Mix&{instrument:string}, bass:Mix&{instrument:string, pattern:string},
- *   drums:Mix&{pattern:string}, melody:Mix&{instrument:string, notes:MelodyNote[]}}} tracks
+ *   drums:Mix&{pattern:string, swing:number, steps:DrumSteps}, melody:Mix&{instrument:string, notes:MelodyNote[]}}} tracks
  */
 
 export const TRACK_IDS = ['voices', 'chords', 'bass', 'drums', 'melody'];
 export const TRACK_LABEL = { voices: 'Gliding voices', chords: 'Extra layer', bass: 'Bass', drums: 'Drums', melody: 'Melody' };
 export const BASS_PATTERNS = { off: 'Off', root: 'Long notes', pulse: 'On every beat', fifth: 'Root and fifth', octave: 'Octaves' };
-export const DRUM_PATTERNS = { off: 'Off', soft: 'Soft pulse', basic: 'Basic beat', four: 'Four on the floor', half: 'Half time' };
+export const DRUM_PATTERNS = { off: 'Off', soft: 'Soft pulse', basic: 'Basic beat', four: 'Four on the floor', half: 'Half time', custom: 'My own (step grid)' };
+
+// The drum grid: one bar of 4 beats in 16 steps (sixteenth notes) per lane. A cell is 0 (off), 1 (soft), 2 (normal) or 3 (accent).
+export const DRUM_LANES = ['kick', 'snare', 'hat', 'open', 'clap', 'tom'];
+export const DRUM_LANE_LABEL = { kick: 'Kick', snare: 'Snare', hat: 'Hi-hat', open: 'Open hat', clap: 'Clap', tom: 'Tom' };
+export const DRUM_STEPS = 16, DRUM_SWING_MAX = 0.6;
+/** How loud each cell level is (0…1). */
+export const DRUM_LEVEL = [0, 0.4, 0.7, 1];
+/** @returns {DrumSteps} */
+export function emptySteps() { return Object.fromEntries(DRUM_LANES.map(l => [l, new Array(DRUM_STEPS).fill(0)])); }
+/** A grid from a compact picture: lane → string of 16 characters, '.' off, 'o' soft, 'x' normal, 'X' accent. */
+const pic = rows => { const g = emptySteps(); for (const [l, r] of Object.entries(rows)) g[l] = Array.from(r.padEnd(DRUM_STEPS, '.').slice(0, DRUM_STEPS), c => (c === 'X' ? 3 : c === 'x' ? 2 : c === 'o' ? 1 : 0)); return g; };
+/** The built-in patterns as grids: they play as they are, and are what "start from a preset, then edit" copies. */
+export const DRUM_PRESETS = {
+  soft: pic({ kick: 'x...............', hat: 'x...o...o...o...' }),
+  basic: pic({ kick: 'X.......x.......', snare: '....x.......x...', hat: 'x.o.x.o.x.o.x.o.' }),
+  four: pic({ kick: 'X...x...x...x...', snare: '....x.......x...', hat: '..x...x...x...x.' }),
+  half: pic({ kick: 'X...............', snare: '........X.......', hat: 'x...o...x...o...' }),
+};
+/** The grid a drum track plays: its own for 'custom', the preset's for a preset, none for 'off'. @param {{pattern:string, steps:DrumSteps}} d @returns {DrumSteps} */
+export function effectiveSteps(d) {
+  if (d.pattern === 'custom') return d.steps;
+  return Object.hasOwn(DRUM_PRESETS, d.pattern) ? DRUM_PRESETS[/** @type {'soft'} */(d.pattern)] : emptySteps();
+}
+/** Any value → a valid grid: only known lanes, exactly 16 whole cells of 0…3 each. */
+export function cleanSteps(x) {
+  const g = emptySteps(), src = x && typeof x === 'object' && !Array.isArray(x) ? x : {};
+  for (const l of DRUM_LANES) {
+    const row = Object.hasOwn(src, l) && Array.isArray(src[l]) ? src[l] : [];
+    for (let i = 0; i < DRUM_STEPS; i++) g[l][i] = clamp(Math.round(num(row[i], 0)), 0, 3);
+  }
+  return g;
+}
 
 export const GLIDE_CURVES = ['straight', 'eased', 'scoop'];
 /** @type {GlideStyle} */
@@ -87,7 +120,7 @@ export function newProject(name = 'Untitled', chordText = 'C G Am F') {
       voices: { ...mix(0.8), sound: 'pad', split: { bass: null, inner: null, top: null } },
       chords: { ...mix(0.8), instrument: 'none' },
       bass: { ...mix(0.8), instrument: 'bass', pattern: 'off' },
-      drums: { ...mix(0.7), pattern: 'off' },
+      drums: { ...mix(0.7), pattern: 'off', swing: 0, steps: emptySteps() },
       melody: { ...mix(0.8), instrument: 'celesta', notes: [] },
     },
   };
@@ -133,6 +166,15 @@ MIGRATIONS[2] = old => ({
   chords: (Array.isArray(old.chords) ? old.chords : []).map(c => (c && typeof c === 'object' ? { ...c, id: shortId() } : c)),
   tracks: { ...(old.tracks || {}), voices: { ...((old.tracks && old.tracks.voices) || {}), split: { bass: null, inner: null, top: null } } },
 });
+
+// Version 4: the drum track gets a step grid and swing. The old pattern keeps playing, as the same grid you can now edit.
+MIGRATIONS[3] = old => {
+  const tracks = old.tracks && typeof old.tracks === 'object' ? old.tracks : {};
+  const drums = tracks.drums && typeof tracks.drums === 'object' ? tracks.drums : {};
+  const pat = typeof drums.pattern === 'string' && Object.hasOwn(DRUM_PRESETS, drums.pattern) ? drums.pattern : null;
+  return { ...old, version: 4, tracks: { ...tracks, drums: { ...drums, swing: 0, steps: pat ? structuredCloneSteps(DRUM_PRESETS[/** @type {'soft'} */(pat)]) : emptySteps() } } };
+};
+const structuredCloneSteps = g => Object.fromEntries(Object.entries(g).map(([l, r]) => [l, r.slice()]));
 
 export class ProjectError extends Error {}
 
@@ -183,7 +225,8 @@ export function normalizeProject(raw) {
       voices: { ...mixOf(t.voices, d.tracks.voices), sound: str(t.voices && t.voices.sound, 'pad', 24) || 'pad', split: splitOf(t.voices && t.voices.split) },
       chords: { ...mixOf(t.chords, d.tracks.chords), instrument: str(t.chords && t.chords.instrument, 'none', 24) || 'none' },
       bass: { ...mixOf(t.bass, d.tracks.bass), instrument: 'bass', pattern: t.bass && typeof t.bass.pattern === 'string' && Object.hasOwn(BASS_PATTERNS, t.bass.pattern) ? t.bass.pattern : 'off' },
-      drums: { ...mixOf(t.drums, d.tracks.drums), pattern: t.drums && typeof t.drums.pattern === 'string' && Object.hasOwn(DRUM_PATTERNS, t.drums.pattern) ? t.drums.pattern : 'off' },
+      drums: { ...mixOf(t.drums, d.tracks.drums), pattern: t.drums && typeof t.drums.pattern === 'string' && Object.hasOwn(DRUM_PATTERNS, t.drums.pattern) ? t.drums.pattern : 'off',
+        swing: clamp(num(t.drums && t.drums.swing, 0), 0, DRUM_SWING_MAX), steps: cleanSteps(t.drums && t.drums.steps) },
       melody: { ...mixOf(t.melody, d.tracks.melody), instrument: str(t.melody && t.melody.instrument, 'celesta', 24) || 'celesta', notes },
     },
   };
