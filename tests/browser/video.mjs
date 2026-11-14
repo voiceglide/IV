@@ -185,6 +185,24 @@ async function lifecycle(browser, url, r) {
   st = await shown(); r.check(!st.video && !st.btn, 'export sheet: editing the project drops its old video', JSON.stringify(st));
   await context.close();
 
+  // no video encoder: the real-time recording is named and described by what it really is (WebM in Chrome), never an .mp4 holding VP9
+  {
+    const cx = await browser.newContext({ viewport: { width: 375, height: 667 }, isMobile: true, hasTouch: true, serviceWorkers: 'block' });
+    await cx.addInitScript(() => { delete /** @type {any} */(window).VideoEncoder; });
+    const pg = await cx.newPage(); pg.on('pageerror', e => r.failures.push('page error: ' + e.message));
+    await pg.goto(url); await pg.waitForFunction('window.__app && !!window.__app.song()');
+    const w = await pg.waitForSelector('#welcomeSheet', { timeout: 1500 }).catch(() => null); if (w) await pg.click('#welcomeSheet button:has-text("Skip")');
+    await quick(pg);
+    await pg.click('#exportBtn'); await pg.waitForSelector('#exportSheet'); await pg.click('#exportSheet .xsave');
+    await pg.waitForSelector('#exportSheet video', { timeout: 120000 });
+    const info = await pg.evaluate(async () => { const v = /** @type {HTMLVideoElement} */(document.querySelector('#exportSheet video')), b = await (await fetch(v.src)).blob(), head = new Uint8Array(await b.slice(0, 4).arrayBuffer());
+      return { status: document.querySelector('#exportSheet .status').textContent, head: [...head], dl: [...document.querySelectorAll('#exportSheet button')].some(x => /Download video/.test(x.textContent)) }; });
+    const webm = info.head[0] === 0x1a && info.head[1] === 0x45;
+    r.check(webm ? /WebM/.test(info.status) && !/MP4 ·/.test(info.status) : /MP4/.test(info.status), 'export fallback: the status names the real container', info.status);
+    r.check(/approximate/.test(info.status), 'export fallback: the status says the length is only approximate', info.status);
+    await cx.close();
+  }
+
   // Download video / Cancel visible without scrolling on a phone held sideways and on the smallest phone
   for (const [w, h] of [[667, 375], [320, 568], [375, 667]]) {
     const { page: pg, context: cx } = await openApp(browser, url, r, { viewport: { width: w, height: h }, mobile: true });

@@ -186,7 +186,7 @@ async function exportFrames(song, o, vcfg, ainfo) {
   try { fin = await sink.finish(); } catch (e) { await sink.discard(); throw e; }
   const { blob } = fin;
   onStatus('Checking the sound…', -1);
-  // decoding the whole file blocks the page for seconds on a long clip (and the loop's own sound was already checked before encoding): only short clips are decoded
+  // decoding the whole file takes seconds on a long clip (and the loop's own sound was already checked before encoding): only short clips are decoded
   const peak = blob.size > 24e6 ? null : await abortable(decodedPeak(engine.unlock(), await fin.bytes()), signal).catch(async e => { await sink.discard(); throw e; });
   if (peak !== null && peak < 1e-4) { await sink.discard(); throw new Error('the sound track came out silent'); }
   sink.commit();

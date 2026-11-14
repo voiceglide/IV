@@ -63,7 +63,8 @@ export function initExports(app) {
     const look = picker('Look', 'xlook', LOOKS, prefs.theme, v => { prefs.theme = v; savePrefs(prefs); });
     const cancel = h('button', { class: 'big ghost', type: 'button', text: 'Cancel', hidden: true, onClick: () => { if (job) { job.abort(); cancel.disabled = true; status.textContent = 'Cancelling…'; } } });
     const setBusy = on => {
-      app.setBusy(on); progress.hidden = !on; cancel.hidden = !(on && job); cancel.disabled = false; result.hidden = on || !video;
+      app.setBusy(on); progress.hidden = !on; cancel.hidden = !(on && job); cancel.disabled = false;
+      if (on) { result.replaceChildren(); result.hidden = true; } else showVideo(); // the old player leaves the page before its file can be replaced
       if (on && job) cancel.focus({ preventScroll: true }); // the button that was pressed is disabled now: keep the keyboard on a live control
       for (const b of [...list.querySelectorAll('button'), ...more.querySelectorAll('button'), ...fmt.inputs, ...look.inputs]) b.disabled = on;
     };
@@ -90,7 +91,7 @@ export function initExports(app) {
         if (job.signal.aborted) throw Object.assign(new Error('Export cancelled.'), { name: 'AbortError' });
         if (video) URL.revokeObjectURL(video.url); // the new file has already replaced the old private file
         video = { blob: out.blob, name: `${base}.${out.ext}`, url: URL.createObjectURL(out.blob) };
-        status.textContent = `Video ready · ${(out.blob.size / 1048576).toFixed(1)} MB · ${out.desc}.`; showVideo();
+        status.textContent = `Video ready · ${(out.blob.size / 1048576).toFixed(1)} MB · ${out.desc}.`;
       } catch (e) {
         if (e && e.name === 'AbortError') status.textContent = 'Export cancelled. Nothing was saved.';
         else fail('The video export', e);
