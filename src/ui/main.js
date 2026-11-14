@@ -60,7 +60,7 @@ function rebuild(why) {
   const tag = why.kind === 'edit' ? why.tag : '';
   const wasAt = engine.playing ? engine.time() : null, old = song;
   // faders and drum-grid taps do not rebuild the song: the loop reads the new tracks at its next pass
-  if ((tag.startsWith('mix:') || tag.startsWith('drums:')) && song) { song.tracks = store.project.tracks; if (tag.startsWith('mix:')) engine.setMix(song.tracks); return; }
+  if ((tag.startsWith('mix:') || tag.startsWith('drums:')) && song) { song.tracks = store.project.tracks; engine.setTracks(song.tracks); if (tag.startsWith('mix:')) engine.setMix(song.tracks); return; }
   let r;
   try { r = buildSong(store.project); } catch (e) { console.error(e); r = { song: null, error: 'This progression cannot be played. Check the chords.' }; }
   song = r.song; $('songErr').textContent = r.error;
@@ -73,6 +73,7 @@ function rebuild(why) {
   if (why.kind === 'open' || !song) { stop(); return; }
   if (wasAt === null) return;
   // text on the video and melody notes do not touch what is sounding now: they are picked up when the loop comes round
+  if (tag.startsWith('melody')) engine.setTracks(store.project.tracks);
   if (tag.startsWith('text:') || tag.startsWith('melody')) return;
   // everything else is heard at once, from the same place: the loop never jumps back to its start
   play(mapTime(old, wasAt, song));
