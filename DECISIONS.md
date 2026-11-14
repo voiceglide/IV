@@ -44,3 +44,8 @@ Choices made without asking, in order. Short on purpose.
 - Mixer changes (volume, pan, mute, solo) apply to the sound that is playing without restarting it; a new instrument or pattern restarts from the same position.
 - Foundations hardening: lookups of chord qualities, patterns and sounds use own-property checks (never `in`); repeats expand to at most 512 chords in total and a longer progression gives a plain error instead of a partial list; a chord `sym` is always one chord; stored projects carry a `rev` and a save over a newer revision from another tab is refused (`conflict`), never silently overwritten; unreadable stored records are listed so they can be deleted.
 - Minor-key numerals mark the raised degrees (♯III, ♯VI, ♯VII) so they never collide with the natural ones.
+
+## Video export (wave 1)
+- The video is exactly one audio loop long: the frame rate is nudged (about 30.013 fps) so the frame count is an integer, frame N equals frame 0, and the audio padding is trimmed.
+- The chord name changes one lead (the 0.26 s glide lead, derived from `starts[n] - vs` in `song.js`) before the sound arrives, so frame 0, the cover, shows the first chord.
+- The export draws on its own canvas and can be cancelled; `exportVideo` takes `ratio` and `theme` options, with no picker in the interface yet.
