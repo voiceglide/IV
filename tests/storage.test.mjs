@@ -43,7 +43,7 @@ test('a stored version 1 record is migrated when read', async () => {
   assert.equal((await s.list())[0].chordCount, 3);
 });
 
-test('a corrupt record reads as null and does not break the list', async () => {
+test('a corrupt record reads as null and is listed after the good ones, so it can be deleted', async () => {
   const idb = new IDBFactory(), s = createProjectStorage(idb);
   await s.ready(); await s.put(newProject('Good'));
   await new Promise((res, rej) => {
@@ -52,6 +52,10 @@ test('a corrupt record reads as null and does not break the list', async () => {
   });
   assert.equal(await s.get('bad'), null);
   assert.equal(await s.get('newer'), null);
+  const l = await s.list();
+  assert.deepEqual(l.map(x => x.name), ['Good', 'Unreadable project', 'Unreadable project']);
+  assert.deepEqual(l.slice(1).map(x => [x.id, x.unreadable, x.reason]), [['bad', true, 'damaged'], ['newer', true, 'newer']]);
+  await s.remove('bad'); await s.remove('newer');
   assert.deepEqual((await s.list()).map(x => x.name), ['Good']);
 });
 
@@ -102,7 +106,7 @@ test('when opening throws or fails, the API runs in memory and never throws', as
 });
 
 /** A factory whose database fails every write with the given error. */
-function failing(makeError) {
+function failing(makeError, methods = ['put']) {
   const real = new IDBFactory();
   return {
     open(...args) {
@@ -113,7 +117,7 @@ function failing(makeError) {
           return new Proxy(tx, {
             get(tt, kk) {
               if (kk === 'objectStore') return name => new Proxy(tt.objectStore(name), { get(ss, m) {
-                if (m === 'put') return () => { throw makeError(); };
+                if (methods.includes(m)) return () => { throw makeError(); };
                 const v = ss[m]; return typeof v === 'function' ? v.bind(ss) : v;
               } });
               const v = tt[kk]; return typeof v === 'function' ? v.bind(tt) : v;
@@ -151,4 +155,88 @@ test('any other write failure maps to a StorageError with code write', async () 
 
 test('a project without an id is refused with a StorageError', async () => {
   await assert.rejects(make().put(/** @type {any} */({ name: 'x' })), e => e instanceof StorageError && e.code === 'write');
+});
+
+// ---------------------------------------------------------------- several tabs
+const twoTabs = () => { const idb = new IDBFactory(); return [createProjectStorage(idb), createProjectStorage(idb)]; };
+
+test('two tabs: the second save over a newer revision is refused, not silently lost', async () => {
+  const [a, b] = twoTabs(), p = newProject('Shared');
+  await a.put(p);
+  const fromA = await a.get(p.id), fromB = await b.get(p.id);
+  await b.put({ ...fromB, name: 'Edited in B' });
+  await assert.rejects(a.put({ ...fromA, name: 'Edited in A' }), e => e instanceof StorageError && e.code === 'conflict');
+  assert.equal((await a.get(p.id)).name, 'Edited in B');          // nothing was overwritten
+  await a.put({ ...fromA, name: 'Edited in A' });                  // after reading the latest, the save goes through
+  assert.equal((await b.get(p.id)).name, 'Edited in A');
+  await b.put({ ...(await b.get(p.id)), name: 'B again' });
+  await a.put({ ...fromA, name: 'A forced' }, { force: true });    // an explicit overwrite
+  assert.equal((await b.get(p.id)).name, 'A forced');
+  a.close(); b.close();
+});
+
+test('revisions count up and a stored record keeps them out of the project', async () => {
+  const s = make(), p = newProject('R');
+  assert.equal(await s.put(p), 1); assert.equal(await s.put(p), 2);
+  assert.equal('rev' in (await s.get(p.id)), false);
+  s.close();
+});
+
+test('a new project and the same tab saving repeatedly never conflict', async () => {
+  const [a] = twoTabs(), p = newProject('N');
+  for (let i = 0; i < 5; i++) await a.put({ ...p, name: 'v' + i });
+  assert.equal((await a.get(p.id)).name, 'v4');
+  a.close();
+});
+
+test('in memory the same conflict rule holds', async () => {
+  const s = createProjectStorage(/** @type {any} */(null)), p = newProject('M');
+  await s.put(p); await s.get(p.id);
+  assert.equal(await s.put(p), 2);
+  s.close();
+});
+
+test('other tabs are told about saves and deletes through BroadcastChannel', async () => {
+  const [a, b] = twoTabs(), p = newProject('Told'), seen = [];
+  const stop = b.onChange(c => seen.push(c));
+  await a.put(p); await a.remove(p.id);
+  await new Promise(r => setTimeout(r, 50));
+  stop();
+  assert.deepEqual(seen, [{ id: p.id, rev: 1, removed: false }, { id: p.id, rev: 0, removed: true }]);
+  a.close(); b.close();
+});
+
+test('after the browser closes the connection, the next call opens a new one', async () => {
+  const idb = new IDBFactory(), s = createProjectStorage(idb), p = newProject('Back');
+  await s.put(p);
+  await new Promise((res, rej) => { const r = idb.deleteDatabase('studio'); r.onsuccess = res; r.onerror = rej; }); // fires versionchange: the old connection closes
+  const q = newProject('After');
+  await s.put(q);
+  assert.deepEqual((await s.list()).map(x => x.name), ['After']);
+  s.close();
+});
+
+test('read errors are not swallowed', async () => {
+  const s = createProjectStorage(/** @type {any} */(failing(() => new DOMException('io', 'UnknownError'), ['get', 'getAll'])));
+  await s.ready();
+  for (const call of [() => s.list(), () => s.get('x'), () => s.getMeta('lastOpen')])
+    await assert.rejects(call(), e => e instanceof StorageError && e.code === 'read');
+});
+
+test('a lost database that cannot be reopened is an error, not a silent switch to memory', async () => {
+  const idb = new IDBFactory(), s = createProjectStorage(idb);
+  await s.put(newProject('Kept'));
+  idb.open = () => { throw new DOMException('denied', 'SecurityError'); };
+  await new Promise((res, rej) => { const r = IDBFactory.prototype.deleteDatabase.call(idb, 'studio'); r.onsuccess = res; r.onerror = rej; });
+  await assert.rejects(s.put(newProject('X')), e => e instanceof StorageError);
+  await assert.rejects(s.list(), e => e instanceof StorageError && e.code === 'read');
+});
+
+test('persistent storage is requested when the browser offers it', async () => {
+  let asked = 0;
+  const s = createProjectStorage(new IDBFactory(), { navigator: { storage: { persist: async () => { asked++; return true; } } } });
+  await s.ready(); assert.equal(asked, 1);
+  const none = createProjectStorage(new IDBFactory(), { navigator: undefined });
+  assert.equal((await none.ready()).persistent, true);
+  s.close(); none.close();
 });
