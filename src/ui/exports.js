@@ -2,7 +2,7 @@
 import { h, ICON } from './dom.js';
 import { openSheet, toast } from './sheet.js';
 import { saveBlob, canShare, shareBlob } from './files.js';
-import { exportVideo } from '../export/video.js';
+import { exportVideo, abortable, releaseExport } from '../export/video.js';
 import { renderLoop } from '../audio/engine.js';
 import { encodeWav } from '../core/wav.js';
 import { songToMidi } from '../core/midiexport.js';
@@ -36,6 +36,16 @@ function picker(label, name, options, value, onPick) {
 
 export function initExports(app) {
   /** @type {{blob:Blob, name:string, url:string}|null} */ let video = null;
+  /** @type {{job:AbortController|null, refresh:()=>void}|null} the open sheet, if any */ let live = null;
+  // The video on offer belongs to the project as it was when it was made: any open, edit, undo or redo drops it (and stops an export that is
+  // still running for the old state), so Download video can never hand out another project's file.
+  app.store.subscribe(() => {
+    const old = video; video = null;
+    if (live) { if (live.job) live.job.abort(); live.refresh(); } // the player leaves the page before its file goes
+    if (old) { URL.revokeObjectURL(old.url); releaseExport(); }
+  });
+  /** Focus a control once it is enabled again (the app re-enables its buttons a frame after the busy state ends). */
+  const focusWhenEnabled = (el, tries = 30) => { if (!el || !document.contains(el)) return; if (!el.disabled) { el.focus({ preventScroll: true }); return; } if (tries > 0) requestAnimationFrame(() => focusWhenEnabled(el, tries - 1)); };
 
   function open() {
     const song = app.song();
@@ -46,20 +56,24 @@ export function initExports(app) {
     const bar = h('i'), progress = h('div', { class: 'progress', hidden: true }, bar);
     const result = h('div', { class: 'stack', hidden: true });
     const list = h('div', { class: 'stack' });
-    /** @type {AbortController|null} */ let job = null; // the running video export, if any
+    /** @type {AbortController|null} */ let job = null; // the running export, if any
+    let closed = false;
     const prefs = loadPrefs();
     const fmt = picker('Format', 'xfmt', FORMATS, prefs.ratio, v => { prefs.ratio = v; savePrefs(prefs); });
     const look = picker('Look', 'xlook', LOOKS, prefs.theme, v => { prefs.theme = v; savePrefs(prefs); });
-    const cancel = h('button', { class: 'big ghost', type: 'button', text: 'Cancel', hidden: true, onClick: () => { if (job) { job.abort(); status.textContent = 'Cancelling…'; } } });
+    const cancel = h('button', { class: 'big ghost', type: 'button', text: 'Cancel', hidden: true, onClick: () => { if (job) { job.abort(); cancel.disabled = true; status.textContent = 'Cancelling…'; } } });
     const setBusy = on => {
-      app.setBusy(on); progress.hidden = !on; cancel.hidden = !(on && job);
+      app.setBusy(on); progress.hidden = !on; cancel.hidden = !(on && job); cancel.disabled = false; result.hidden = on || !video;
+      if (on && job) cancel.focus({ preventScroll: true }); // the button that was pressed is disabled now: keep the keyboard on a live control
       for (const b of [...list.querySelectorAll('button'), ...more.querySelectorAll('button'), ...fmt.inputs, ...look.inputs]) b.disabled = on;
     };
     const onStatus = (text, p) => { status.textContent = text; progress.classList.toggle('wait', p < 0); bar.style.width = p < 0 ? '8%' : Math.max(4, Math.round(p * 100)) + '%'; };
     const fail = (what, e) => { status.textContent = ''; toast(`${what} did not work: ${String(e && e.message || e).replace(/\.$/, '')}. Nothing was lost; you can try again.`, { error: true }); };
 
+    // after a job: the keyboard goes back to a real control, never to the page
+    const restoreFocus = () => { if (closed) focusWhenEnabled(document.getElementById('exportBtn')); else saveVideo.focus({ preventScroll: true }); };
     function showVideo() {
-      if (!video) { result.hidden = true; return; }
+      if (!video) { result.replaceChildren(); result.hidden = true; return; }
       const v = video, vid = h('video', { controls: true, playsInline: true, src: v.url, 'aria-label': 'Exported video' });
       const share = canShare(v.blob, v.name) ? h('button', { class: 'big ghost', type: 'button', text: 'Share…', onClick: async () => { if (!await shareBlob(v.blob, v.name, APP_NAME)) toast('Sharing did not work here. Use Download video instead.', { error: true }); } }) : null;
       // the buttons come first and the preview after them, so the file can be saved without scrolling on a small phone
@@ -70,25 +84,28 @@ export function initExports(app) {
     const item = (title, sub, fn) => h('button', { class: 'ld', type: 'button', onClick: fn }, h('span', null, h('b', { text: title }), h('small', { text: sub })), h('i', { html: ICON.download }));
 
     const saveVideo = h('button', { class: 'big pink xsave', type: 'button', text: 'Save video', onClick: async () => {
-      job = new AbortController(); setBusy(true);
+      job = new AbortController(); me.job = job; setBusy(true);
       try {
         const out = await exportVideo({ song, engine: app.engine, onStatus, signal: job.signal, ratio: prefs.ratio, theme: prefs.theme });
-        if (video) URL.revokeObjectURL(video.url);
+        if (job.signal.aborted) throw Object.assign(new Error('Export cancelled.'), { name: 'AbortError' });
+        if (video) URL.revokeObjectURL(video.url); // the new file has already replaced the old private file
         video = { blob: out.blob, name: `${base}.${out.ext}`, url: URL.createObjectURL(out.blob) };
         status.textContent = `Video ready · ${(out.blob.size / 1048576).toFixed(1)} MB · ${out.desc}.`; showVideo();
       } catch (e) {
         if (e && e.name === 'AbortError') status.textContent = 'Export cancelled. Nothing was saved.';
         else fail('The video export', e);
-      } finally { job = null; setBusy(false); app.redraw(); }
+      } finally { job = null; me.job = null; if (closed && live === me) live = null; setBusy(false); app.redraw(); restoreFocus(); }
     } });
     list.append(
       item('Audio', 'WAV, 48 kHz stereo, one seamless loop', async () => {
-        setBusy(true); onStatus('Rendering audio…', -1);
+        job = new AbortController(); me.job = job; setBusy(true); onStatus('Rendering audio…', -1);
         try {
-          const buf = await renderLoop(song, 48000);
+          const buf = await abortable(renderLoop(song, 48000), job.signal);
           saveBlob(new Blob([encodeWav([buf.getChannelData(0), buf.getChannelData(1)], 48000)], { type: 'audio/wav' }), `${base}.wav`);
           status.textContent = 'Audio saved to your downloads.';
-        } catch (e) { fail('The audio export', e); } finally { setBusy(false); }
+        } catch (e) {
+          if (e && e.name === 'AbortError') status.textContent = 'Export cancelled. Nothing was saved.'; else fail('The audio export', e);
+        } finally { job = null; me.job = null; if (closed && live === me) live = null; setBusy(false); restoreFocus(); }
       }),
       item('MIDI', 'Notes of every track, to open in another music app', () => {
         try {
@@ -104,7 +121,11 @@ export function initExports(app) {
     const note = h('p', { class: 'xnote', text: 'An MP4 with sound: one seamless loop of your progression.' });
     const chosen = () => { note.textContent = `An MP4 with sound, ${SIZES[prefs.ratio]}: one seamless loop of your progression.`; };
     chosen(); for (const i of [...fmt.inputs, ...look.inputs]) i.addEventListener('change', chosen);
-    openSheet({ title: 'Export', id: 'exportSheet', body: [fmt.el, look.el, saveVideo, note, progress, cancel, status, result, more],
+    const picks = h('div', { class: 'xpicks' }, fmt.el, look.el);
+    // the finished video's buttons come first, so Download / Share is on screen on any phone, in either orientation
+    const me = { job: /** @type {AbortController|null} */(null), refresh: () => { if (!job) { showVideo(); status.textContent = ''; } } };
+    live = me;
+    openSheet({ title: 'Export', id: 'exportSheet', onClose: () => { closed = true; if (!me.job && live === me) live = null; }, body: [result, picks, saveVideo, note, progress, cancel, status, more],
       // closing the sheet while a video is being made cancels it; the quick exports (audio) are not worth interrupting
       canClose: () => { if (!app.busy()) return true; if (job) { job.abort(); return true; } toast('Please wait for the export to finish.'); return false; } });
     showVideo();

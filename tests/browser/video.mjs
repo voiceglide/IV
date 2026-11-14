@@ -77,25 +77,36 @@ export async function run(browser, url, r) {
     r.check(vs.width === 1080 && vs.height === 1920 && Math.abs(fps - 30) < 0.6, 'video: 1080×1920 at about 30 fps', `${vs.width}×${vs.height} @ ${fps.toFixed(3)}`);
   }
 
-  // cancel: the button works, nothing is saved, the buttons come back; closing the sheet also cancels
-  await page.click('#exportSheet .xsave');
-  await page.waitForSelector('#exportSheet button:has-text("Cancel"):visible');
-  await page.waitForTimeout(1500);
-  await page.click('#exportSheet button:has-text("Cancel")');
-  await page.waitForFunction(() => /cancelled/i.test(document.querySelector('#exportSheet .status').textContent), null, { timeout: 20000 });
-  r.check(await page.evaluate(() => !window.__app.busy() && !document.querySelector('#exportSheet button:disabled')), 'video: after Cancel the sheet is usable again');
+  // cancel: the button works at any moment of the export, takes effect within 2 s, nothing is saved, the keyboard lands on a real control
+  for (const ms of [200, 1200, 3500]) {
+    await page.click('#exportSheet .xsave');
+    await page.waitForSelector('#exportSheet button:has-text("Cancel"):visible');
+    await page.waitForTimeout(ms);
+    const t0 = Date.now();
+    await page.click('#exportSheet button:has-text("Cancel")');
+    await page.waitForFunction(() => !window.__app.busy(), null, { timeout: 20000, polling: 50 });
+    const took = Date.now() - t0;
+    r.check(took < 2000, `video: Cancel ${ms} ms into the export releases the app within 2 s`, `${took} ms`);
+    const st = await page.evaluate(() => ({ status: document.querySelector('#exportSheet .status').textContent, disabled: !!document.querySelector('#exportSheet button:disabled'), active: document.activeElement.tagName + '.' + document.activeElement.className }));
+    r.check(/cancelled/i.test(st.status) && !st.disabled, 'video: after Cancel the status says so and the sheet is usable again', JSON.stringify(st));
+    r.check(/xsave/.test(st.active), 'video: after Cancel the keyboard focus is on the Save video button, not the page', st.active);
+  }
   await page.click('#exportSheet .xsave');
   await page.waitForSelector('#exportSheet button:has-text("Cancel"):visible');
   await page.waitForTimeout(800);
+  const te = Date.now();
   await page.keyboard.press('Escape');
   await page.waitForFunction(() => !document.querySelector('#exportSheet'), null, { timeout: 5000 });
-  await page.waitForFunction(() => !window.__app.busy(), null, { timeout: 20000 });
-  r.check(true, 'video: the sheet closes while an export runs, and cancels it');
+  await page.waitForFunction(() => !window.__app.busy(), null, { timeout: 20000, polling: 50 });
+  r.check(Date.now() - te < 2000, 'video: Escape during an export closes the sheet and releases the app within 2 s', `${Date.now() - te} ms`);
+  await page.waitForFunction(() => document.activeElement && document.activeElement.id === 'exportBtn', null, { timeout: 3000 }).catch(() => {});
+  r.check(await page.evaluate(() => document.activeElement.id === 'exportBtn'), 'video: after Escape the focus is back on the Export button', await page.evaluate(() => document.activeElement.tagName + '#' + document.activeElement.id));
   // memory: where private storage exists the video is a file there; cancelled exports leave nothing behind
   const files = await page.evaluate(async () => { try { const d = await navigator.storage.getDirectory(), n = []; for await (const [k] of /** @type {any} */(d).entries()) n.push(k); return n; } catch (e) { return null; } });
   if (files) r.check(files.filter(n => n.startsWith('iv-export-')).length === 1, 'video: the export is kept as one private file, cancelled ones leave none', files.join());
   await context.close();
   await pickers(browser, url, r);
+  await lifecycle(browser, url, r);
 }
 
 /** The video of the open Export sheet, probed with ffprobe, or null where ffprobe is missing. */
@@ -143,4 +154,49 @@ async function pickers(browser, url, r) {
   await page.click('#exportSheet input[name=xlook][value=night]', { force: true });
   r.check(await page.locator('#exportSheet .xsave').isEnabled(), 'export sheet: choosing a Look with storage blocked does not break it');
   await context.close();
+}
+
+/** A tiny, quick project so exports finish in a few seconds. */
+const quick = page => page.evaluate(() => { const a = /** @type {any} */(window).__app; a.store.update(p => { p.chords = p.chords.slice(0, 2); p.tempo = 160; }, 'test:quick'); });
+
+/** The video on offer belongs to the open project; the file's buttons are on screen on small and sideways phones. */
+async function lifecycle(browser, url, r) {
+  const { page, context } = await openApp(browser, url, r, { viewport: { width: 375, height: 667 }, mobile: true });
+  await quick(page);
+  await page.click('#exportBtn'); await page.waitForSelector('#exportSheet');
+  await page.click('#exportSheet .xsave'); await page.waitForSelector('#exportSheet video', { timeout: 120000 });
+  const shown = () => page.evaluate(() => ({ video: !!document.querySelector('#exportSheet video') && !document.querySelector('#exportSheet video').closest('[hidden]'), btn: !![...document.querySelectorAll('#exportSheet button')].find(b => /Download video/.test(b.textContent) && !b.closest('[hidden]')) }));
+  // same project, sheet closed and reopened: the video is still its own
+  await page.keyboard.press('Escape'); await page.waitForFunction(() => !document.querySelector('#exportSheet'));
+  await page.click('#exportBtn'); await page.waitForSelector('#exportSheet');
+  let st = await shown(); r.check(st.video && st.btn, 'export sheet: reopening for the same project still offers its video', JSON.stringify(st));
+  // another project is opened while the sheet is open: the video goes at once
+  await page.evaluate(() => { const a = /** @type {any} */(window).__app, p = JSON.parse(JSON.stringify(a.store.project)); p.id = 'other-project'; p.name = 'Other'; p.chords = p.chords.slice(0, 1); a.store.open(p); });
+  st = await shown(); r.check(!st.video && !st.btn, 'export sheet: opening another project removes the old video from the open sheet', JSON.stringify(st));
+  await page.keyboard.press('Escape'); await page.waitForFunction(() => !document.querySelector('#exportSheet'));
+  await page.click('#exportBtn'); await page.waitForSelector('#exportSheet');
+  st = await shown(); r.check(!st.video && !st.btn, 'export sheet: reopening after another project was opened offers no video', JSON.stringify(st));
+  // export project two, then edit it: the video is dropped again
+  await page.click('#exportSheet .xsave'); await page.waitForSelector('#exportSheet video', { timeout: 120000 });
+  st = await shown(); r.check(st.video && st.btn, 'export sheet: project two gets its own video', JSON.stringify(st));
+  await page.keyboard.press('Escape'); await page.waitForFunction(() => !document.querySelector('#exportSheet'));
+  await page.evaluate(() => { /** @type {any} */(window).__app.store.update(p => { p.tempo = 100; }, 'test:edit'); });
+  await page.click('#exportBtn'); await page.waitForSelector('#exportSheet');
+  st = await shown(); r.check(!st.video && !st.btn, 'export sheet: editing the project drops its old video', JSON.stringify(st));
+  await context.close();
+
+  // Download video / Cancel visible without scrolling on a phone held sideways and on the smallest phone
+  for (const [w, h] of [[667, 375], [320, 568], [375, 667]]) {
+    const { page: pg, context: cx } = await openApp(browser, url, r, { viewport: { width: w, height: h }, mobile: true });
+    await quick(pg);
+    await pg.click('#exportBtn'); await pg.waitForSelector('#exportSheet'); await pg.waitForTimeout(500);
+    await pg.click('#exportSheet .xsave'); await pg.waitForSelector('#exportSheet button:has-text("Cancel"):visible');
+    const box = sel => pg.evaluate(s => { const b = [...document.querySelectorAll('#exportSheet button')].find(x => new RegExp(s).test(x.textContent) && !x.closest('[hidden]') && !x.hidden); if (!b) return null; const q = b.getBoundingClientRect(); return { top: q.top, bottom: q.bottom, h: innerHeight }; }, sel);
+    let q = await box('^Cancel'); r.check(q && q.top >= 0 && q.bottom <= q.h, `export sheet ${w}×${h}: Cancel is visible without scrolling`, JSON.stringify(q));
+    if (process.env.CAPTURE_DIR) await pg.screenshot({ path: join(process.env.CAPTURE_DIR, `export-running-${w}x${h}.png`) });
+    await pg.waitForSelector('#exportSheet video', { timeout: 120000 }); await pg.waitForTimeout(300);
+    q = await box('Download video'); r.check(q && q.top >= 0 && q.bottom <= q.h, `export sheet ${w}×${h}: Download video is visible without scrolling`, JSON.stringify(q));
+    if (process.env.CAPTURE_DIR) await pg.screenshot({ path: join(process.env.CAPTURE_DIR, `export-done-${w}x${h}.png`) });
+    await cx.close();
+  }
 }
