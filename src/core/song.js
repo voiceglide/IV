@@ -46,7 +46,8 @@ export function buildSong(project) {
   tri.forEach(c => { c.rn = romanOf(c, key); c.strong = !Q[c.q][0].every(x => scale.includes((c.root + x) % 12)); });
   let uLo = 99, uHi = 0, bLo = 99, bHi = 0;
   for (const x of mid) { uLo = Math.min(uLo, ...x.upper); uHi = Math.max(uHi, ...x.upper); bLo = Math.min(bLo, x.bass); bHi = Math.max(bHi, x.bass); }
-  const vs = cycle + starts[0] - LEAD;
+  // a loop shorter than the lead would start before time 0, where no notes exist: the lead shrinks with it
+  const vs = cycle + starts[0] - Math.min(LEAD, 0.8 * cycle);
   const text = project.text;
   const song = {
     chords: tri, v, starts, end: t, cycle, n, vs, ve: vs + cycle, spb, key, sharps: base.some(c => c.acc === '♯'),

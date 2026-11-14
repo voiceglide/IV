@@ -42,3 +42,10 @@ test('finished passes are let go: the nodes the looper holds plateau over 60 s o
   const gone = ac.nodes.filter(n => n.__rec.disconnected > 0).length;
   assert.ok(gone > 100, 'old nodes were disconnected: ' + gone);
 });
+
+test('a loop shorter than the lead (0.25 beat at 120 bpm) still plays: one kick per pass, not silence', () => {
+  const song = songOf('C:0.25', p => { p.tempo = 120; p.tracks.drums.pattern = 'four'; });
+  assert.ok(song.cycle < 0.26 && song.vs >= 0, `loop window starts at ${song.vs}`);
+  const ac = fakeContext(), lp = start(song, ac); lp.pump();
+  assert.equal(kicksOf(ac), Math.ceil((1.5 - 0.15) / song.cycle), 'a kick for every pass inside the lookahead');
+});
