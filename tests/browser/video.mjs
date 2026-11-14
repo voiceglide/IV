@@ -36,7 +36,7 @@ export async function run(browser, url, r) {
   // a real export
   await page.evaluate(() => { const w = /** @type {any} */(window); w.__long = []; new PerformanceObserver(l => { for (const e of l.getEntries()) w.__long.push(e.duration); }).observe({ entryTypes: ['longtask'] }); });
   await page.click('#exportBtn'); await page.waitForSelector('#exportSheet');
-  await page.click('#exportSheet button:has-text("Video")');
+  await page.click('#exportSheet .xsave');
   await page.waitForSelector('#exportSheet video', { timeout: 240000 });
   const out = await page.evaluate(async () => {
     const v = /** @type {HTMLVideoElement} */(document.querySelector('#exportSheet video')); const buf = new Uint8Array(await (await fetch(v.src)).arrayBuffer());
@@ -63,18 +63,69 @@ export async function run(browser, url, r) {
   }
 
   // cancel: the button works, nothing is saved, the buttons come back; closing the sheet also cancels
-  await page.click('#exportSheet button:has-text("Video")');
+  await page.click('#exportSheet .xsave');
   await page.waitForSelector('#exportSheet button:has-text("Cancel"):visible');
   await page.waitForTimeout(1500);
   await page.click('#exportSheet button:has-text("Cancel")');
   await page.waitForFunction(() => /cancelled/i.test(document.querySelector('#exportSheet .status').textContent), null, { timeout: 20000 });
   r.check(await page.evaluate(() => !window.__app.busy() && !document.querySelector('#exportSheet button:disabled')), 'video: after Cancel the sheet is usable again');
-  await page.click('#exportSheet button:has-text("Video")');
+  await page.click('#exportSheet .xsave');
   await page.waitForSelector('#exportSheet button:has-text("Cancel"):visible');
   await page.waitForTimeout(800);
   await page.keyboard.press('Escape');
   await page.waitForFunction(() => !document.querySelector('#exportSheet'), null, { timeout: 5000 });
   await page.waitForFunction(() => !window.__app.busy(), null, { timeout: 20000 });
   r.check(true, 'video: the sheet closes while an export runs, and cancels it');
+  // memory: where private storage exists the video is a file there; cancelled exports leave nothing behind
+  const files = await page.evaluate(async () => { try { const d = await navigator.storage.getDirectory(), n = []; for await (const [k] of /** @type {any} */(d).entries()) n.push(k); return n; } catch (e) { return null; } });
+  if (files) r.check(files.filter(n => n.startsWith('iv-export-')).length === 1, 'video: the export is kept as one private file, cancelled ones leave none', files.join());
+  await context.close();
+  await pickers(browser, url, r);
+}
+
+/** The video of the open Export sheet, probed with ffprobe, or null where ffprobe is missing. */
+async function probeShown(page) {
+  const b64 = await page.evaluate(async () => {
+    const v = /** @type {HTMLVideoElement} */(document.querySelector('#exportSheet video')); const buf = new Uint8Array(await (await fetch(v.src)).arrayBuffer());
+    let bin = ''; for (let k = 0; k < buf.length; k += 8192) bin += String.fromCharCode(...buf.subarray(k, k + 8192)); return btoa(bin);
+  });
+  const file = join(mkdtempSync(join(tmpdir(), 'vid-')), 'out.mp4'); writeFileSync(file, Buffer.from(b64, 'base64'));
+  try { return JSON.parse(execFileSync('ffprobe', ['-v', 'error', '-show_streams', '-of', 'json', file], { encoding: 'utf8' })).streams.find(x => x.codec_type === 'video'); } catch (e) { return null; }
+}
+
+/** Export sheet on the smallest phone: Format and Look pickers, remembered choice, the file's buttons visible without scrolling. */
+async function pickers(browser, url, r) {
+  const shots = process.env.CAPTURE_DIR;
+  const { page, context } = await openApp(browser, url, r, { viewport: { width: 375, height: 667 }, mobile: true });
+  await page.click('#exportBtn'); await page.waitForSelector('#exportSheet');
+  const labels = await page.evaluate(() => ({ fmt: [...document.querySelectorAll('#exportSheet [aria-label="Format"] b')].map(e => e.textContent), look: [...document.querySelectorAll('#exportSheet [aria-label="Look"] b')].map(e => e.textContent),
+    primary: document.querySelector('#exportSheet .xsave').textContent, moreOpen: document.querySelector('#exportSheet details').open }));
+  r.check(labels.fmt.join() === 'Vertical,Square,Wide' && labels.look.join() === 'Paper,Night' && labels.primary === 'Save video' && !labels.moreOpen, 'export sheet: Format and Look pickers, one Save video button, other formats under More', JSON.stringify(labels));
+  r.check(await page.evaluate(() => document.querySelector('#exportSheet input[name=xfmt]:checked').value === '9:16' && document.querySelector('#exportSheet input[name=xlook]:checked').value === 'paper'), 'export sheet: Vertical and Paper are the defaults');
+  await page.waitForTimeout(500); // the sheet slides up
+  if (shots) await page.screenshot({ path: join(shots, 'export-sheet-375x667.png') });
+  await page.check('#exportSheet input[name=xfmt][value="1:1"]', { force: true }); await page.check('#exportSheet input[name=xlook][value=night]', { force: true });
+  const kept = await page.evaluate(() => JSON.parse(localStorage.getItem('iv.export.look') || 'null'));
+  r.check(kept && kept.ratio === '1:1' && kept.theme === 'night', 'export sheet: the choice is remembered', JSON.stringify(kept));
+  await page.click('#exportSheet .xsave');
+  await page.waitForSelector('#exportSheet video', { timeout: 240000 });
+  const vis = await page.evaluate(() => { const b = [...document.querySelectorAll('#exportSheet button')].find(x => /Download video/.test(x.textContent)), q = b.getBoundingClientRect(), pb = document.querySelector('#exportSheet .pbody');
+    return { bottom: q.bottom, top: q.top, h: innerHeight, scrolled: pb.scrollTop, share: !![...document.querySelectorAll('#exportSheet button')].find(x => /Share/.test(x.textContent)) }; });
+  r.check(vis.top >= 0 && vis.bottom <= vis.h, 'export sheet: Download video is visible without scrolling at 375×667', `top ${Math.round(vis.top)} bottom ${Math.round(vis.bottom)} of ${vis.h}`);
+  if (shots) await page.screenshot({ path: join(shots, 'export-done-375x667.png') });
+  const vs = await probeShown(page);
+  if (vs) r.check(vs.width === 1080 && vs.height === 1080, 'export: Square gives a 1080×1080 video', `${vs.width}×${vs.height}`);
+  // the next visit starts from the remembered choice
+  await page.keyboard.press('Escape'); await page.waitForFunction(() => !document.querySelector('#exportSheet'));
+  await page.reload(); await page.waitForFunction('window.__app && !!window.__app.song()');
+  await page.click('#exportBtn'); await page.waitForSelector('#exportSheet');
+  r.check(await page.evaluate(() => document.querySelector('#exportSheet input[name=xfmt]:checked').value === '1:1' && document.querySelector('#exportSheet input[name=xlook]:checked').value === 'night'), 'export sheet: the remembered Format and Look come back after a reload');
+  // a storage that throws must not break the sheet
+  await page.keyboard.press('Escape');
+  await page.evaluate(() => { Object.defineProperty(window, 'localStorage', { get() { throw new Error('blocked'); } }); });
+  await page.click('#exportBtn'); await page.waitForSelector('#exportSheet');
+  r.check(await page.evaluate(() => document.querySelector('#exportSheet input[name=xfmt]:checked').value === '9:16'), 'export sheet: works with storage blocked (defaults)');
+  await page.click('#exportSheet input[name=xlook][value=night]', { force: true });
+  r.check(await page.locator('#exportSheet .xsave').isEnabled(), 'export sheet: choosing a Look with storage blocked does not break it');
   await context.close();
 }

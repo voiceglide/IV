@@ -48,4 +48,11 @@ Choices made without asking, in order. Short on purpose.
 ## Video export (wave 1)
 - The video is exactly one audio loop long: the frame rate is nudged (about 30.013 fps) so the frame count is an integer, frame N equals frame 0, and the audio padding is trimmed.
 - The chord name changes one lead (the 0.26 s glide lead, derived from `starts[n] - vs` in `song.js`) before the sound arrives, so frame 0, the cover, shows the first chord.
-- The export draws on its own canvas and can be cancelled; `exportVideo` takes `ratio` and `theme` options, with no picker in the interface yet.
+- The export draws on its own canvas and can be cancelled; `exportVideo` takes `ratio` and `theme` options.
+
+## Video export (wave 2)
+- The Export sheet has one big "Save video" button with a Format (Vertical 9:16, Square 1:1, Wide 16:9) and a Look (Paper, Night) picker above it; audio, MIDI and the project file are under "More". The choice is remembered in localStorage (`iv.export.look`, inside try/catch). When the video is ready, "Download video" and "Share…" come before the preview so they stay on screen at 375×667.
+- The MP4 is written through `FileSystemWritableFileStreamTarget` to a private OPFS file when the browser allows it (the Blob returned is that file); otherwise `ArrayBufferTarget`. The MP4 keeps its index at the front (`fastStart: 'in-memory'`), so the muxer holds the encoded chunks until the end rather than streaming; the saving is that the finished file is not held a second time.
+- The preview canvas follows the app theme through `renderer.followSystem()` (prefers-color-scheme, or `data-theme` when set); the export Look is chosen separately and drawn on its own renderer.
+- Rendering stays on the main thread. A worker would need its own font loading (the page's Inter is a page-level stylesheet), a second copy of the draw path to keep identical, and separate cancel plumbing; the page already stays responsive in slices, so the risk was not worth one 0.5 s task.
+- Golden frames: 5 timestamps × 3 ratios × 2 looks are compared with a stored 40-column brightness grid (tests/browser/golden/frames.json) with a tolerance for anti-aliasing; regenerate with `UPDATE_GOLDEN=1 npm run test:browser -- frames`.

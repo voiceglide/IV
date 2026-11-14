@@ -13,7 +13,7 @@ and nobody has listened to the sound: see "Not verified".
 | Autosave, restore on reload | ✅ | `projects` test |
 | My projects: create, rename, duplicate, delete | ✅ | `projects` test |
 | Import / export .json, old files migrated, bad files refused | ✅ | `projects` test, unit tests |
-| Storage never used for tracking | ✅ | only projects, the last-open id and the "guide seen" flag are stored |
+| Storage never used for tracking | ✅ | only projects, the last-open id, the "guide seen" flag and the last Export Format and Look are stored |
 | Example plays in one tap on first launch | ✅ | `welcome` test |
 | Three-step guide, skippable; help at any time | ✅ | `welcome` test |
 | Clear empty state | ✅ | `edges` test |
@@ -51,7 +51,9 @@ simulated) · storage unavailable (falls back to memory with a notice) · no cho
 ## Known limits, with how to see them
 - **Loop seam in WAV/video audio**: the gliding voices are free-running oscillators, so the last sample of the loop does not meet the first one exactly (a step of about 0.04 of full scale was measured). On repeat this can be a faint tick. Reproduce: export WAV, loop it in an audio editor.
 - **Video sound codec**: where the browser cannot encode AAC the MP4 carries Opus sound (seen in headless Chromium on Linux); some players and platforms refuse it. Chrome on Android/desktop and Safari normally provide AAC.
-- **Very long loops**: a 200-chord progression plays and exports, but the video export holds the whole file in memory.
+- **Very long loops**: the video is written to a file in the browser's private storage (OPFS) as it is encoded, and the result is that file, so the finished MP4 is not held in memory. Where OPFS is missing or refuses (some private windows, older Safari), it is built in memory with one buffer. Either way the encoded chunks of the whole video are held by the muxer until the file is finalised (the MP4 index goes at the front for players and uploads), and the sound loop is rendered in memory. Not measured with a 200-chord loop. A leftover private-storage file (page closed mid-export) is deleted by the next export.
+- **Video export and the page**: frames are drawn on the main thread in small slices, so the page stays usable, but there is one longest task of about half a second while the sound is rendered. Moving it to a worker was left out (see DECISIONS.md).
+- **Video look**: the Format (vertical, square, wide) and Look (paper, night) are chosen in the Export sheet and remembered. The preview follows the app's dark mode; the exported Look is independent of it.
 - **Melody grid**: touch and mouse only; shows two octaves of the key at a time; notes outside the key cannot be entered.
 - **Glyphs**: ♭ and ♯ come from the system font, so their look varies slightly between devices.
 - **`main` branch**: still the one-line placeholder; see RAPPORT.md.
