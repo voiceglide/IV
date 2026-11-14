@@ -15,7 +15,7 @@ export function initMenu() {
       items.map(it => h('button', { class: 'ld', type: 'button', onClick: () => { s.close(); it.run(); } }, h('span', null, h('b', { text: it.label })), h('i', { html: it.icon || ICON.right })))) });
   });
 
-  const keys = [['Space', 'Play or stop'], ['Ctrl/⌘ + Z', 'Undo'], ['Ctrl/⌘ + Shift + Z', 'Redo'], ['E', 'Open or close Edit'], ['1 – 4', 'Switch Edit tab'], ['N', 'Add a chord'], ['Alt + ← →', 'Move the chosen chord'], ['X', 'Export'], ['P', 'My projects'], ['?', 'This help'], ['Esc', 'Close a panel']];
+  const keys = [['Space', 'Play or stop'], ['Ctrl/⌘ + Z', 'Undo'], ['Ctrl/⌘ + Shift + Z', 'Redo'], ['E', 'Open or close Edit'], ['1 – 5', 'Switch Edit tab'], ['N', 'Add a chord'], ['Alt + ← →', 'Move the chosen chord'], ['X', 'Export'], ['P', 'My projects'], ['?', 'This help'], ['Esc', 'Close a panel']];
   function openHelp() {
     openSheet({ title: 'Help', id: 'helpSheet', body: h('div', { class: 'stack help' },
       h('ol', { class: 'steps' },
