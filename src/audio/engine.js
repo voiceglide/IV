@@ -17,9 +17,10 @@ const VOICES_LEVEL = 0.06;
 const CHANNEL_HP = { voices: 20, drums: 30 };
 /** How much of each track goes to the reverb (a send per track: the bass stays dry and clear, the voices float). */
 const REVERB_SEND = { voices: 0.3, chords: 0.3, bass: 0.04, drums: 0.1, melody: 0.32 };
+const KNEE = 0.74;
 const XF = 0.04;          // cross-fade of the gliding voices across the loop boundary
 const LOOKAHEAD = 1.5;    // seconds: the next pass is scheduled this long before it starts
-const CEILING = 0.88;     // nothing leaves the master above this (−1.1 dBFS)
+const CEILING = 0.84;     // the soft ceiling's asymptote; its 4x oversampling can overshoot it by a few percent, so nothing leaves above ~0.88
 
 /** What a track's fader, mute and solo add up to, as a linear gain. 0.8 on the fader is unity. */
 export function trackGain(tracks, id) {
@@ -44,10 +45,10 @@ function reverbImpulse(ac, seconds = 2.4, preDelay = 0.022) {
   return buf;
 }
 
-/** Soft ceiling: untouched up to 0.8, then rounds off towards CEILING. The last line of defence after the limiter. */
+/** Soft ceiling: untouched up to KNEE, then rounds off towards CEILING. The last line of defence after the limiter. */
 function ceilingCurve() {
   const n = 2048, c = new Float32Array(n);
-  for (let i = 0; i < n; i++) { const x = (i / (n - 1)) * 2 - 1, a = Math.abs(x); c[i] = Math.sign(x) * (a <= 0.8 ? a : 0.8 + (CEILING - 0.8) * Math.tanh((a - 0.8) / (CEILING - 0.8))); }
+  for (let i = 0; i < n; i++) { const x = (i / (n - 1)) * 2 - 1, a = Math.abs(x); c[i] = Math.sign(x) * (a <= KNEE ? a : KNEE + (CEILING - KNEE) * Math.tanh((a - KNEE) / (CEILING - KNEE))); }
   return c;
 }
 
@@ -91,7 +92,7 @@ function buildChannel(ac, dest, tracks, id, instrument) {
 }
 
 /** @typedef {Record<string, ReturnType<typeof buildChannel>>} Channels */
-function buildChannels(ac, dest, tracks) {
+export function buildChannels(ac, dest, tracks) {
   const chordInst = INSTRUMENTS[tracks.chords.instrument] || null;
   const bassInst = INSTRUMENTS[tracks.bass.instrument] || INSTRUMENTS.softpiano;
   const melodyInst = INSTRUMENTS[tracks.melody.instrument] || INSTRUMENTS.softpiano;
@@ -118,7 +119,7 @@ function scheduleVoices(ac, out, song, abs, o) {
   const style = song.glideStyle || { curve: 'eased', vibrato: 0.5, swell: 0.5 }, depth = 2 * style.vibrato, sw = style.swell;
   const st = o.cont ? loC : Math.max(0, loC - 0.1), stop = hiC + 0.15;
   /** @type {any[]} */ const reg = [];
-  const pass = ac.createGain(); pass.connect(out);
+  const pass = ac.createGain(); pass.connect(out); reg.push(pass);
   const ramp = (up) => { const a = new Float32Array(24); for (let j = 0; j < 24; j++) { const u = j / 23; a[j] = up ? Math.sin(u * Math.PI / 2) : Math.cos(u * Math.PI / 2); } return a; };
   pass.gain.value = o.cont ? 0 : 1;
   if (o.cont) pass.gain.setValueCurveAtTime(ramp(true), loC, XF);
@@ -127,7 +128,7 @@ function scheduleVoices(ac, out, song, abs, o) {
   const group = sound => {
     let g = groups.get(sound.id);
     if (!g) {
-      const trim = ac.createGain(); trim.gain.value = sound.level; trim.connect(pass);
+      const trim = ac.createGain(); trim.gain.value = sound.level; trim.connect(pass); reg.push(trim);
       let lfo = null;
       if (sound.vibrato.length) {
         lfo = ac.createGain(); lfo.gain.value = 1;
@@ -231,38 +232,54 @@ export function scheduleSong(ac, dest, song, t0, opts = {}) {
  * A looping play: passes of [vs, ve) scheduled one after the other, seamlessly.
  * `playAt` is the context time at which song time `from` should sound.
  */
-function createLooper(ac, built, song0, playAt, from, opts = {}) {
+export function createLooper(ac, built, song0, playAt, from, opts = {}) {
   const song = Object.assign({}, song0, { loop: true });
   const { vs, ve, cycle } = song;
   from = Math.min(Math.max(from, vs), ve - 0.01);
   const t0 = playAt - from;
-  /** @type {any[]} */ let reg = [];
+  /** Passes still sounding (or about to): `end` is the context time after which nothing of the pass can be heard. */
+  /** @type {{end:number, nodes:any[]}[]} */ let live = [];
   let k = 0;
   const startOf = j => t0 + j * cycle + vs;      // context time at which pass j begins (song time vs)
+  const GRACE = 1;                               // seconds after a pass's end before its nodes are let go
+  /** Let go of every pass that is over: disconnect its nodes and drop the references, so they can be freed. */
+  function prune() {
+    const now = ac.currentTime;
+    live = live.filter(p => {
+      if (p.end + GRACE >= now) return true;
+      for (const n of p.nodes) { try { n.disconnect(); } catch (e) { /* already gone */ } }
+      return false;
+    });
+  }
   function schedule() {
     const first = k === 0, T = t0 + k * cycle;
-    reg.push(...schedulePass(ac, built, song, T, {
+    const nodes = schedulePass(ac, built, song, T, {
       live: first && !!opts.live, from: first ? from : undefined, only: opts.only, skip: opts.skip,
       win: first ? [opts.live ? -Infinity : vs, ve] : [vs, ve],
       voices: first ? { lo: song.starts[0], hi: ve + XF / 2, fade: XF, cont: false } : { lo: vs - XF / 2, hi: ve + XF / 2, fade: XF, cont: true },
-    }));
+    });
+    live.push({ end: T + ve + XF / 2 + 0.2, nodes });
     k++;
   }
   return {
-    /** Schedule every pass that starts within the lookahead. */
-    pump() { while (startOf(k) - LOOKAHEAD <= ac.currentTime) schedule(); },
+    /** Schedule every pass that starts within the lookahead, and let go of the passes that are over. */
+    pump() { prune(); while (startOf(k) - LOOKAHEAD <= ac.currentTime) schedule(); },
     /** Schedule exactly n passes (offline). */
     all(n) { while (k < n) schedule(); },
+    /** The tracks the NEXT pass is built from (drum grid, melody notes, bass pattern): what is already scheduled is left alone. */
+    setTracks(tracks) { song.tracks = tracks; },
+    /** How many nodes of finished and running passes are still referenced (tests: this must plateau). */
+    retained() { return live.reduce((a, p) => a + p.nodes.length, 0); },
     /** Song time at context time `now`, wrapped into the loop window. */
     timeAt(now) { const t = now - t0; return t < ve ? t : vs + ((t - vs) % cycle); },
-    kill(at) { for (const s of reg) { try { s.stop(at); } catch (e) { /* not started or already over */ } } reg = []; },
+    kill(at) { for (const p of live) for (const s of p.nodes) { try { s.stop(at); } catch (e) { /* not started or already over */ } } live = []; },
   };
 }
 
 /**
  * Render the loop offline. Resolves with a stereo AudioBuffer that holds exactly one cycle, [song.vs, song.ve]: it is
  * rendered from several passes of the same machinery as the live loop (at least max(cycle, 3 s) of warm-up, so the reverb
- * is full), then its first 40 ms are cross-faded (equal power) with the audio that follows the loop's end, so the end
+ * is full), then its first 40 ms are cross-faded (linear: both sides are the same material) with the audio that follows the loop's end, so the end
  * runs into the start without a step.
  * opts.raw: return the passes as they are, no window or cross-fade (opts.passes of them) · opts.dry: no master, no reverb
  * opts.solo: only this track · opts.voice: only this gliding voice (tests)
@@ -287,7 +304,8 @@ export async function renderLoop(song, sampleRate = 48000, opts = {}) {
     const d = out.getChannelData(c), r = full.getChannelData(c);
     d.set(r.subarray(s, s + len));
     // i = 0 continues the end of the window (r[s + len]); by i = F it is the window's own start (r[s + F])
-    for (let i = 0; i < F; i++) { const u = i / F; d[i] = Math.cos(u * Math.PI / 2) * r[s + len + i] + Math.sin(u * Math.PI / 2) * r[s + i]; }
+    // linear: the two are the same periodic material (correlated), so the gains must add up to 1; equal power would bump the head by up to +3 dB
+    for (let i = 0; i < F; i++) { const u = i / F; d[i] = (1 - u) * r[s + len + i] + u * r[s + i]; }
   }
   return out;
 }
@@ -360,6 +378,8 @@ export function createEngine() {
       playing = true;
     },
     stop,
+    /** Hand the loop the project's current tracks: the next pass uses the new drum grid, melody notes and bass pattern (no restart). */
+    setTracks(tracks) { if (looper) looper.setTracks(tracks); },
     /** Song time of the play head (in a loop: always inside [vs, ve)). */
     time() { if (!ac) return 0; return looper ? looper.timeAt(ac.currentTime) : ac.currentTime - t0; },
     /** Apply fader, pan, mute and solo changes to what is playing, without a restart. */
