@@ -49,14 +49,15 @@ const ACC = { '♯': '#', '♭': 'b', '': '' };
 /** The parts of a chord symbol, for the picker: root pitch class, quality id, bass pitch class (or −1). */
 export function chordParts(sym) {
   const c = parseChord(sym);
-  if (!c) return { root: 0, q: '', bass: -1, rootName: 'C' };
-  return { root: c.root, q: c.q, bass: c.slash ? c.bass : -1, rootName: c.letter + ACC[c.acc] };
+  if (!c) return { root: 0, q: '', bass: -1, rootName: 'C', bassName: '' };
+  return { root: c.root, q: c.q, bass: c.slash ? c.bass : -1, rootName: c.letter + ACC[c.acc], bassName: c.slash ? String(c.slash).replace('♯', '#').replace('♭', 'b') : '' };
 }
 const NAMES = ['C', 'Db', 'D', 'Eb', 'E', 'F', 'F#', 'G', 'Ab', 'A', 'Bb', 'B'];
 /** Build a chord symbol from picker choices. `rootName` keeps a spelling the person typed (C# stays C#). */
-export function chordSym(root, q, bass = -1, rootName = '') {
+export function chordSym(root, q, bass = -1, rootName = '', bassName = '') {
+  const keepBass = bassName && parseChord(bassName) && /** @type {any} */(parseChord(bassName)).root === bass;
   const keep = rootName && parseChord(rootName) && /** @type {any} */(parseChord(rootName)).root === root;
-  return (keep ? rootName : NAMES[root]) + q + (bass >= 0 && bass !== root ? '/' + NAMES[bass] : '');
+  return (keep ? rootName : NAMES[root]) + q + (bass >= 0 && bass !== root ? '/' + (keepBass ? bassName : NAMES[bass]) : '');
 }
 
 /** Tempo in beats per minute from the times (ms) of a series of taps, or null when there are fewer than two. Uses the last five taps. */

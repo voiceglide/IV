@@ -33,3 +33,10 @@ test('tap tempo averages the last taps', async () => {
   assert.equal(tempoFromTaps([0, 500, 1000, 1500]), 120);
   assert.equal(tempoFromTaps([0, 100000]), 20);
 });
+
+test('slash bass keeps the spelling the person typed when the quality changes', async () => {
+  const { chordParts, chordSym } = await import('../src/core/edit.js');
+  const p = chordParts('F#/A#');
+  assert.equal(chordSym(p.root, 'm', p.bass, p.rootName, p.bassName), 'F#m/A#');
+  assert.equal(chordSym(p.root, '', 4, p.rootName, p.bassName), 'F#/E');
+});

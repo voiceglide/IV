@@ -63,7 +63,7 @@ test('chord edits: insert, duplicate, move, remove keep sections in place', () =
 });
 
 test('chord picker parts and symbols', () => {
-  assert.deepEqual(chordParts('F#m7/E'), { root: 6, q: 'm7', bass: 4, rootName: 'F#' });
+  assert.deepEqual(chordParts('F#m7/E'), { root: 6, q: 'm7', bass: 4, rootName: 'F#', bassName: 'E' });
   assert.equal(chordSym(6, 'm7', 4, 'F#'), 'F#m7/E'); assert.equal(chordSym(1, '', -1), 'Db'); assert.equal(chordSym(0, 'maj7', 0), 'Cmaj7');
 });
 

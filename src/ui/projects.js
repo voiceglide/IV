@@ -61,8 +61,11 @@ export function initProjects(app) {
       if (remember) await storage.setMeta('lastOpen', p.id);
       failing = false;
     } catch (e) {
-      if (!failing) toast(e && e.name === 'StorageError' ? e.message : 'Could not save on this device. Export your project to a file to keep it safe.', { error: true });
+      const conflict = e && e.code === 'conflict';
+      if (!failing) toast(conflict ? 'This project was changed in another tab. Reload this tab to get the latest version before editing.' : e && e.name === 'StorageError' ? e.message : 'Could not save on this device. Export your project to a file to keep it safe.', { error: true });
       failing = true;
+      // a failed save is tried again in a few seconds, unless another tab owns the newer version
+      if (!conflict) { dirty = true; clearTimeout(timer); timer = window.setTimeout(flush, 5000); }
     }
     if (--saving === 0) { clearTimeout(savingTimer); showSaving = false; }
     renderSub();
@@ -106,12 +109,13 @@ export function initProjects(app) {
 
   // ------------------------------------------------------------ opening projects
   async function openProject(p) { await flush(); store.open(p); }
-  async function names() { return (await storage.list()).map(x => x.name); }
+  const safeList = async () => { try { return await storage.list(); } catch (e) { toast('Could not read your saved projects on this device.', { error: true }); return []; } };
+  async function names() { return (await safeList()).map(x => x.name); }
   /** Saved projects, with the open one taken from memory so it is always up to date. */
   async function listing() {
     await flush();
     const open = summarize(store.project);
-    return (await storage.list()).filter(x => x.id !== open.id).concat(open).sort((a, b) => b.updatedAt - a.updatedAt);
+    return (await safeList()).filter(x => x.id !== open.id).concat(open).sort((a, b) => b.updatedAt - a.updatedAt);
   }
   /** The stored document of a project (the open one comes from memory). */
   async function load(id) { return id === store.project.id ? store.project : storage.get(id); }

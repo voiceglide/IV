@@ -14,7 +14,8 @@ export function createStore(init = {}) {
   const listeners = new Set();
   /** @type {Set<(ui:UiState, prev:UiState)=>void>} */
   const uiListeners = new Set();
-  const emit = (kind, tag = '') => { for (const fn of listeners) fn({ kind, tag }); };
+  // one failing listener must never stop the others (autosave among them)
+  const emit = (kind, tag = '') => { for (const fn of listeners) { try { fn({ kind, tag }); } catch (e) { console.error(e); } } };
   /** @type {UiState} */
   let ui = { selectedId: null, tab: 'Chords', editOpen: !!init.editOpen };
   /** Change the ui slice; listeners hear about it only when something really changed. @param {Partial<UiState>} patch */

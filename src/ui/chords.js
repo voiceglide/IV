@@ -77,6 +77,7 @@ export function initChords(app) {
     clearTimeout(typing);
     typing = window.setTimeout(() => {
       const r = chordsFromText(text.value);
+      if (r.error) { textErr.textContent = r.error; return; }
       if (r.bad.length) { textErr.textContent = `Not a chord: ${r.bad.slice(0, 4).join(', ')}. Use names like C, Am7, F#m or G/B.`; return; }
       textErr.textContent = ''; ownText = true;
       store.update(p => { setChordList(p, r.chords); }, 'chords:text');

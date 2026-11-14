@@ -17,7 +17,7 @@ export function initPicker(app) {
   const title = h('div', { class: 'pk-title', 'aria-live': 'polite' });
   const group = (label, cls, kids) => h('div', { class: 'prow ' + cls, role: 'group', 'aria-label': label }, kids);
   const roots = FLAT.map((_, r) => h('button', { type: 'button', class: 'opt', text: rootName(r), 'data-root': r, onClick: () => change(parts => chordSym(r, parts.q, -1)) }));
-  const quals = QUALITIES.map(q => h('button', { type: 'button', class: 'opt', text: Q_LABEL(q), 'data-q': q, onClick: () => change(parts => chordSym(parts.root, q, parts.bass, parts.rootName)) }));
+  const quals = QUALITIES.map(q => h('button', { type: 'button', class: 'opt', text: Q_LABEL(q), 'data-q': q, onClick: () => change(parts => chordSym(parts.root, q, parts.bass, parts.rootName, parts.bassName)) }));
   const bass = h('select', { id: 'chordBass', onChange: e => change(parts => chordSym(parts.root, parts.q, +e.target.value, parts.rootName)) },
     opt(-1, 'The root (normal)'), FLAT.map((_, r) => opt(r, rootName(r))));
   const len = h('select', { id: 'chordLen', onChange: e => edit(ch => { ch.beats = e.target.value === '' ? null : +e.target.value; }, 'beats') },

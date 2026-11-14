@@ -58,7 +58,8 @@ function rebuild(why) {
   const tag = why.kind === 'edit' ? why.tag : '';
   const wasAt = engine.playing ? engine.time() : null, old = song;
   if (tag.startsWith('mix:') && song) { song.tracks = store.project.tracks; engine.setMix(song.tracks); return; }
-  const r = buildSong(store.project);
+  let r;
+  try { r = buildSong(store.project); } catch (e) { console.error(e); r = { song: null, error: 'This progression cannot be played. Check the chords.' }; }
   song = r.song; $('songErr').textContent = r.error;
   if (song) {
     scrub.min = song.vs.toFixed(2); scrub.max = song.ve.toFixed(2);
