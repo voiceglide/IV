@@ -6,7 +6,7 @@
 // loop has no gap: the voices cross-fade for 40 ms across the boundary, notes simply ring on.
 import { INSTRUMENTS } from './instruments/index.js';
 import { hz } from './instrument.js';
-import { scheduleDrums } from './drums.js';
+import { scheduleDrums, hitDrum } from './drums.js';
 import { GLIDE } from './glides/index.js';
 import { chordEvents, bassEvents, drumEvents, melodyEvents, limitPolyphony } from '../core/patterns.js';
 import { glideOf, slotPitch, idxAt } from '../core/song.js';
@@ -386,6 +386,12 @@ export function createEngine() {
         amp(param, scale = 1) { param.setValueAtTime(0, a.currentTime); param.setTargetAtTime(VOICES_LEVEL * scale, t0, 0.04); param.setTargetAtTime(0, t0 + hold, 0.18); },
       }));
       setTimeout(() => { if (audit === g) audit = null; try { g.disconnect(); } catch (e) { /* gone */ } }, (hold + 1.4) * 1000);
+    },
+    /** Hear one drum sound right now (the drum grid uses it when a lane name is tapped). */
+    auditionDrum(lane, v = 0.7) {
+      const a = this.unlock(), g = a.createGain(); g.connect(/** @type {any} */(master).bus);
+      hitDrum(a, g, lane, a.currentTime + 0.02, v);
+      setTimeout(() => { try { g.disconnect(); } catch (e) { /* gone */ } }, 1500);
     },
     /** Play a few notes right now with an instrument (the chord picker uses it so choices can be heard). */
     audition(midis, instrumentId) {

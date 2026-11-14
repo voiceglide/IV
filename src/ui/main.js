@@ -7,6 +7,7 @@ import { initChords } from './chords.js';
 import { initTracks } from './tracks.js';
 import { initTextPane } from './textpane.js';
 import { initMelody } from './melody.js';
+import { initDrums } from './drums.js';
 import { initExports } from './exports.js';
 import { initMenu } from './menu.js';
 import { initProjects } from './projects.js';
@@ -58,7 +59,8 @@ function mapTime(old, t, next) {
 function rebuild(why) {
   const tag = why.kind === 'edit' ? why.tag : '';
   const wasAt = engine.playing ? engine.time() : null, old = song;
-  if (tag.startsWith('mix:') && song) { song.tracks = store.project.tracks; engine.setMix(song.tracks); return; }
+  // faders and drum-grid taps do not rebuild the song: the loop reads the new tracks at its next pass
+  if ((tag.startsWith('mix:') || tag.startsWith('drums:')) && song) { song.tracks = store.project.tracks; if (tag.startsWith('mix:')) engine.setMix(song.tracks); return; }
   let r;
   try { r = buildSong(store.project); } catch (e) { console.error(e); r = { song: null, error: 'This progression cannot be played. Check the chords.' }; }
   song = r.song; $('songErr').textContent = r.error;
@@ -113,7 +115,7 @@ const app = {
 };
 
 // ---------------------------------------------------------------- edit panel and tabs (state lives in store.ui)
-const TABS = ['Chords', 'Tracks', 'Melody', 'Text'];
+const TABS = ['Chords', 'Tracks', 'Melody', 'Drums', 'Text'];
 function setEditOpen(open, tab) { store.setUi(tab ? { editOpen: open, tab } : { editOpen: open }); }
 function applyUi() {
   const { tab, editOpen } = store.ui;
@@ -167,7 +169,7 @@ document.addEventListener('keydown', e => {
   if (e.key === ' ') { if (t && t.tagName === 'BUTTON' && !wasPointer) return; e.preventDefault(); togglePlay(); }
   else if (e.key === 'Escape' && document.body.classList.contains('fs')) setFullscreen(false);
   else if (k === 'e') setEditOpen(!store.ui.editOpen);
-  else if (k >= '1' && k <= '4') { const live = TABS.filter(x => !$('tab' + x).hidden); if (live[+k - 1]) setEditOpen(true, live[+k - 1]); }
+  else if (k >= '1' && k <= '5') { const live = TABS.filter(x => !$('tab' + x).hidden); if (live[+k - 1]) setEditOpen(true, live[+k - 1]); }
   else if (k === 'n') $('addChord').click();
   else if (k === 'x') $('exportBtn').click();
   else if (k === 'p') $('projBtn').click();
@@ -183,7 +185,7 @@ store.subscribe(why => { rebuild(why); syncHead(); });
 store.open(exampleProject(0));
 const m = initMenu(); app.menu = m.menu; app.openHelp = m.openHelp;
 const chordsUi = initChords(app);
-initTracks(app); initTextPane(app); const melodyUi = initMelody(app); initExports(app);
+initTracks(app); initTextPane(app); const melodyUi = initMelody(app); initDrums(app, $('paneDrums')); initExports(app);
 $('tabMelody').hidden = !app.features.melody; applyUi();
 initProjects(app); initFeedback(app); initPwa(app);
 initWelcome(app);
