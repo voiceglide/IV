@@ -1,0 +1,11 @@
+/* Sound tab: scenes, per-voice sounds, glide feel */
+.sect{display:grid;gap:6px;margin-top:6px}
+.sect:empty{display:none}
+.note{margin:0;font-size:12.5px;line-height:1.35;color:var(--muted)}
+.mix .note{padding:0 2px 2px}
+.main-name{flex:1;min-width:0;font-size:14px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.srow .hear{min-width:56px}
+.srow .tog.curve{flex:1;min-width:0}
+.stack{display:grid;gap:0}
+.stack .cap{width:auto}
+.stack input[type=range]{width:100%}
