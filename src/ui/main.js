@@ -37,7 +37,7 @@ $('editBtn').querySelector('.ico').innerHTML = ICON.edit;
 function stop() { engine.stop(); }
 function play(from) {
   if (!song || busy) return;
-  try { engine.play(song, from); } catch (e) { toast(`Sound could not start: ${e && /** @type {any} */(e).message || e}`, { error: true }); }
+  try { engine.play(song, from, { loop: true }); } catch (e) { toast(`Sound could not start: ${e && /** @type {any} */(e).message || e}`, { error: true }); }
 }
 function togglePlay() {
   if (busy) return;
@@ -199,8 +199,7 @@ function frame() {
   }
   if (!busy) {
     if (engine.playing && song) {
-      let t = engine.time();
-      if (t > song.ve) { play(song.vs); t = song.vs; }
+      const t = engine.time();
       renderer.draw(song, t); scrub.value = String(t);
       chordsUi.highlight(idxAt(song, t) % song.n);
       melodyUi.playhead((t - song.vs - (song.starts[song.n] - song.vs)) / song.spb);
