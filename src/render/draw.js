@@ -346,12 +346,33 @@ export function createRenderer(cv, opts = {}) {
   }
 
   function rebuild() { grain = null; staff = null; staffFor = null; axis = null; }
+  let last = /** @type {any} */(null), stopFollow = /** @type {(()=>void)|null} */(null); // the last frame drawn, to repaint after a theme change
   return {
     /** Draw the frame at time `now` (seconds on the song's own clock). A null song draws the empty state. */
     draw(song, now) {
       if (!grain) buildGrain();
       if (song && staffFor !== song) { paintStaticLayers(song); staffFor = song; } else if (!song && !staff) paintStaticLayers(null);
-      draw(song, now);
+      last = { song, now }; draw(song, now);
+    },
+    /** Switch the colours ('paper' or 'night'); the last frame drawn is repainted at once. */
+    setTheme(name) { const t = resolveTheme(name); if (t.name === th.name) return; th = t; rebuild(); if (last) this.draw(last.song, last.now); },
+    get theme() { return th.name; },
+    /**
+     * Make the colours follow the app's light/dark setting (prefers-color-scheme, or the data-theme attribute when the page sets one), now and
+     * whenever it changes. Call once; returns a function that stops following. Export looks are unaffected: they use their own renderer.
+     */
+    followSystem() {
+      if (stopFollow) return stopFollow;
+      const mq = typeof matchMedia === 'function' ? matchMedia('(prefers-color-scheme: dark)') : null;
+      const apply = () => {
+        const forced = typeof document !== 'undefined' ? document.documentElement.dataset.theme : '';
+        this.setTheme(forced === 'dark' || (forced !== 'light' && mq && mq.matches) ? 'night' : 'paper');
+      };
+      apply();
+      if (mq) mq.addEventListener('change', apply);
+      const mo = typeof MutationObserver === 'function' && typeof document !== 'undefined' ? new MutationObserver(apply) : null;
+      if (mo) mo.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+      return stopFollow = () => { if (mq) mq.removeEventListener('change', apply); if (mo) mo.disconnect(); stopFollow = null; };
     },
     /** Change the frame size (aspect ratio) and/or the theme; the canvas is resized. */
     configure(o = {}) { if (o.w) w = o.w; if (o.h) h = o.h; if (o.theme) th = resolveTheme(o.theme); L = layoutFor(w, h); cv.width = w; cv.height = h; rebuild(); },
