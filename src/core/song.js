@@ -5,6 +5,17 @@ import { parseChord, chooseVoicings, detectKey, romanOf, Q, MINORISH, SHARP, FLA
 
 const clamp = u => Math.max(0, Math.min(1, u));
 const easeInOutSine = u => 0.5 - 0.5 * Math.cos(Math.PI * clamp(u));
+export const GLIDE_CURVES = ['straight', 'eased', 'scoop'];
+/**
+ * Shape of one glide: how far (0…1) a voice has travelled after a fraction u (0…1) of the glide time.
+ * straight: constant speed · eased: slow start and stop (half cosine) · scoop: lingers on the old note, then swoops up late.
+ */
+export function curveShape(curve, u) {
+  u = clamp(u);
+  if (curve === 'straight') return u;
+  if (curve === 'scoop') return Math.pow(u, 2.4);
+  return easeInOutSine(u);
+}
 const LEAD = 0.26; // the loop starts this long before its first chord, inside the glide that leads to it
 
 /**
@@ -41,7 +52,7 @@ export function buildSong(project) {
     error: '',
     song: {
       chords: tri, v, starts, end: t, cycle, n, vs, ve: vs + cycle, spb, key, sharps: base.some(c => c.acc === '♯'),
-      uLo, uHi, bLo, bHi, dur: Math.max(0.4, Math.min(cycle / n, 8)), kb: null, glide: project.glide,
+      uLo, uHi, bLo, bHi, dur: Math.max(0.4, Math.min(cycle / n, 8)), kb: null, glide: project.glide, glideStyle: project.glideStyle,
       hook: text.hook.trim(), question: text.question.trim(), reveal: text.reveal.trim(), watermark: text.watermark.trim(), qSec: 2.2,
       beats: cycle / spb, tempo: project.tempo, tracks: project.tracks,
     },
@@ -57,13 +68,25 @@ export function idxAt(song, t) {
   while (a < b) { const m = (a + b + 1) >> 1; if (s[m] <= t) a = m; else b = m - 1; }
   return a;
 }
+const curveOf = song => (song.glideStyle && song.glideStyle.curve) || 'eased';
+/** Which chord a voice is on at time t, and how far (0…1, already shaped by the curve) it is through the glide to the next. */
 export function glideState(song, t) {
   const s = song.starts, n = s.length; if (t <= s[0]) return { i: 0, e: 0 };
   const i = idxAt(song, t); if (i === n - 1) return { i, e: 0 };
   const g = glideOf(song, i + 1), gs = s[i + 1] - g; if (t < gs) return { i, e: 0 };
-  return { i, e: easeInOutSine((t - gs) / g) };
+  return { i, e: curveShape(curveOf(song), (t - gs) / g) };
 }
-export function pitchAt(song, k, t) { const { i, e } = glideState(song, t); const a = slotPitch(song, i, k); if (!e) return a; return a + (slotPitch(song, i + 1, k) - a) * e; }
+/**
+ * THE glide curve: how far voice k is from the note of the chord it is currently on, in semitones, at song time t.
+ * It is 0 while the voice rests and reaches (next note − current note) at the end of the glide. The audio engine
+ * schedules exactly this curve (as cents on a pitch bus) and the drawing uses it through pitchAt, so what you see is what you hear.
+ */
+export function glideCurve(song, k, t) {
+  const { i, e } = glideState(song, t); if (!e) return 0;
+  return (slotPitch(song, i + 1, k) - slotPitch(song, i, k)) * e;
+}
+/** Pitch of voice k at time t, in (fractional) MIDI notes. */
+export function pitchAt(song, k, t) { const { i } = glideState(song, t); return slotPitch(song, i, k) + glideCurve(song, k, t); }
 export function noteAt(song, k, t) { const { i, e } = glideState(song, t); return e < 0.5 ? slotPitch(song, i, k) : slotPitch(song, i + 1, k); }
 
 const SHARP_MAJ = new Set([7, 2, 9, 4, 11, 6, 1]), SHARP_MIN = new Set([4, 11, 6, 1, 8, 3]);

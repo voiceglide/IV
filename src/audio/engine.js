@@ -6,6 +6,7 @@ import { scheduleDrums } from './drums.js';
 import { GLIDE } from './glides.js';
 import { chordEvents, bassEvents, drumEvents, melodyEvents, limitPolyphony } from '../core/patterns.js';
 import { glideOf, slotPitch } from '../core/song.js';
+import { createPitchBus } from './pitchbus.js';
 import { TRACK_IDS } from '../core/project.js';
 
 const VOICES_LEVEL = 0.06;
@@ -34,6 +35,9 @@ function buildMaster(ac) {
   return { bus, out };
 }
 
+/** A pitch bus that stays at 0 cents: a voice that does not move. */
+function steady(ac, start, stop) { const b = ac.createConstantSource(); b.offset.value = 0; b.start(start); b.stop(stop); return b; }
+
 /** One channel per track: input → low cut → balance × fader → pan → session bus. */
 function buildChannel(ac, dest, tracks, id, instrument) {
   const input = ac.createGain();
@@ -60,16 +64,9 @@ function scheduleVoices(ac, out, song, abs) {
   }
   for (let k = 0; k < 6; k++) {
     const moves = []; for (let i = 1; i < n; i++) if (slotPitch(song, i, k) !== slotPitch(song, i - 1, k)) moves.push(abs(S[i]));
+    const { bus, base } = createPitchBus(ac, song, k, abs, st, stop, hz);
     sound.voice(ac, trim, {
-      k, bass: k === 0, start: st, stop, vib, moves,
-      pitch(param, ratio = 1) {
-        param.setValueAtTime(hz(slotPitch(song, 0, k)) * ratio, st);
-        for (let i = 1; i < n; i++) {
-          const gl = glideOf(song, i);
-          param.setValueAtTime(hz(slotPitch(song, i - 1, k)) * ratio, abs(S[i] - gl));
-          param.exponentialRampToValueAtTime(hz(slotPitch(song, i, k)) * ratio, abs(S[i]));
-        }
-      },
+      k, bass: k === 0, start: st, stop, vib, moves, bus, base,
       amp(param, scale = 1) {
         param.setValueAtTime(0, ac.currentTime);
         for (let i = 0; i < n; i++) {
@@ -206,8 +203,7 @@ export function createEngine() {
       let vib = null;
       if (sound.vibrato.length) { vib = a.createGain(); for (const [rate, cents] of sound.vibrato) { const l = a.createOscillator(); l.frequency.value = rate; const d = a.createGain(); d.gain.value = cents; l.connect(d); d.connect(vib); l.start(t0); l.stop(stop); } }
       [...new Set(midis)].sort((x, y) => x - y).forEach((midi, k) => sound.voice(a, g, {
-        k, bass: k === 0, start: t0, stop, vib, moves: [t0],
-        pitch(param, ratio = 1) { param.setValueAtTime(hz(midi) * ratio, t0); },
+        k, bass: k === 0, start: t0, stop, vib, moves: [t0], bus: steady(a, t0, stop), base: hz(midi),
         amp(param, scale = 1) { param.setValueAtTime(0, a.currentTime); param.setTargetAtTime(VOICES_LEVEL * scale, t0, 0.04); param.setTargetAtTime(0, t0 + hold, 0.18); },
       }));
       setTimeout(() => { if (audit === g) audit = null; try { g.disconnect(); } catch (e) { /* gone */ } }, (hold + 1.4) * 1000);

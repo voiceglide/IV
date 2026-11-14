@@ -4,14 +4,15 @@
 // voice(ac, out, v) builds one voice. The engine hands it:
 //   v.k        voice number (0 = bass, 1…5 upper voices from the top down), v.bass
 //   v.start, v.stop           when sources may start and must stop
-//   v.pitch(param, ratio)     schedules this voice's sliding pitch on a frequency AudioParam (× ratio for partials)
+//   v.base, v.bus             the voice's first note in Hz, and its pitch bus (cents, driven by glideCurve): connect to osc.detune
 //   v.amp(param, scale)       schedules this voice's loudness (fade in, doubled voices muted, fade out)
 //   v.vib                     a node carrying the shared vibrato, in cents: connect it to osc.detune (or null)
 //   v.moves                   times at which this voice arrives on a new note (for swells)
 import { noiseBuffer } from './instruments/kit.js';
 
 function osc(ac, v, type, ratio = 1, cents = 0) {
-  const o = ac.createOscillator(); o.type = type; v.pitch(o.frequency, ratio); o.detune.value = cents;
+  const o = ac.createOscillator(); o.type = type; o.frequency.value = v.base * ratio; o.detune.value = cents;
+  v.bus.connect(o.detune);
   if (v.vib) v.vib.connect(o.detune);
   o.start(v.start); o.stop(v.stop);
   return o;
