@@ -63,9 +63,16 @@ export async function run(browser, url, r) {
     const tones = [...document.querySelectorAll('.mel-cell.tone[data-c="0"]')].filter(el => { const b = el.getBoundingClientRect(); return b.top >= s.top + 30 - 1 && b.bottom <= s.bottom + 1; });
     return { rows: rows.length, tones: tones.length, labelled: [...document.querySelectorAll('.mel-name.white')].every(e => e.textContent.length >= 2) };
   });
-  r.check(roll.rows >= 10, 'Melody: at least 10 rows are visible at 375 × 667', JSON.stringify(roll));
+  r.check(roll.rows >= 7, 'Melody: at least 7 rows are visible at 375 × 667 (the preview keeps its room)', JSON.stringify(roll));
   r.check(roll.tones >= 1, 'Melody: the first view shows a chord tone');
   r.check(roll.labelled, 'Melody: every white key is labelled');
+  const view = await page.evaluate(() => {
+    const cv = document.getElementById('cv').getBoundingClientRect(), ed = document.getElementById('edit').getBoundingClientRect(), s = document.querySelector('.mel-scroll').getBoundingClientRect();
+    const c4 = document.querySelector('.mel-name[data-m="60"]'), k = c4 && c4.getBoundingClientRect();
+    return { canvas: Math.min(cv.bottom, ed.top) - Math.max(cv.top, 0), c4: !!k && k.top >= s.top + 30 - 1 && k.bottom <= s.bottom + 1 };
+  });
+  r.check(view.canvas >= 160, 'Melody: at least 160 px of the preview stay visible above the sheet', String(view.canvas));
+  r.check(view.c4, 'Melody: an empty melody opens with the C4 row in view');
   const w0 = await page.evaluate(() => document.querySelector('.mel-grid').scrollWidth);
   await page.click('button[aria-label="Fit the whole loop in view"]');
   const fit = await page.evaluate(() => { const s = document.querySelector('.mel-scroll'); return s.scrollWidth <= s.clientWidth + 2; });
