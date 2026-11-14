@@ -15,7 +15,7 @@ export function initWelcome(app) {
     if (document.querySelector('.sheet')) return; // something else is already asking for attention
     const steps = h('ol', { class: 'steps' },
       h('li', null, h('b', { text: 'Listen. ' }), 'Tap Play: every coloured line is one voice moving from chord to chord.'),
-      h('li', null, h('b', { text: 'Change it. ' }), 'Tap Edit to swap chords, pick sounds, add bass, drums or a melody.'),
+      h('li', null, h('b', { text: 'Change it. ' }), 'Tap a chord to swap it, + to add one. Edit has sounds, bass, drums and a melody.'),
       h('li', null, h('b', { text: 'Keep it. ' }), 'Export a video, audio or MIDI file. Your work saves itself on this device.'));
     const s = openSheet({ title: `Welcome to ${APP_NAME}`, id: 'welcomeSheet', kind: 'dialog', body: [steps,
       h('div', { class: 'btns' },

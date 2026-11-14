@@ -34,6 +34,7 @@ export const ICON = {
   more: svg('<circle cx="5" cy="12" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="19" cy="12" r="1.3"/>'),
   plus: svg('<path d="M12 5v14M5 12h14"/>'),
   edit: svg('<path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2.4"/><circle cx="8" cy="17" r="2.4"/>'),
+  expand: svg('<path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/>'),
   left: svg('<path d="M15 6l-6 6 6 6"/>'),
   right: svg('<path d="M9 6l6 6-6 6"/>'),
   trash: svg('<path d="M5 7h14M10 7V4h4v3M7 7l1 13h8l1-13"/>'),

@@ -26,7 +26,7 @@ export async function run(browser, url, r) {
   r.check(back.tempo === 123 && back.id === first.id, 'an edit survives a reload', JSON.stringify(back));
 
   // new project
-  await openSheet(); await page.click('#projectsSheet button:has-text("New project")');
+  await openSheet(); await page.click('#projectsSheet button:has-text("New project")'); await page.click('#newBlank');
   await page.waitForFunction(id => window.__app.store.project.id !== id, first.id);
   r.check((await P()).name === 'Untitled 1', 'New project opens an empty-named project', (await P()).name);
   await openSheet();

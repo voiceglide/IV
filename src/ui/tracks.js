@@ -1,4 +1,4 @@
-// The Sound tab: one strip per track with its instrument or pattern, volume, pan, mute and solo.
+// The Sound tab: the sound of the gliding voices as tiles first; the mixer (one row per track) is folded under "Advanced".
 import { h } from './dom.js';
 import { TRACK_IDS, TRACK_LABEL, BASS_PATTERNS, DRUM_PATTERNS } from '../core/project.js';
 import { CHORD_INSTRUMENTS } from '../audio/instruments/index.js';
@@ -27,23 +27,25 @@ export function initTracks(app) {
   const tiles = GLIDE_SOUNDS.map(g => h('button', { class: 'tile', type: 'button', 'data-glide': g.id, onClick: () => {
     store.update(p => { p.tracks.voices.sound = g.id; }, 'sound:glide'); app.previewSound();
   } }, h('b', { text: g.name }), h('small', { text: g.hint })));
-  pane.append(h('div', null, h('div', { class: 'gh', text: 'Sound of the gliding voices' }), h('div', { class: 'tiles', role: 'group', 'aria-label': 'Sound of the gliding voices' }, tiles)),
-    h('div', { class: 'gh', text: 'Tracks' }));
+  const advanced = h('details', { class: 'more advanced' }, h('summary', { text: 'Advanced: instruments, volume and balance' }));
+  pane.append(h('div', null, h('div', { class: 'gh', text: 'Sound of the gliding voices' }), h('div', { class: 'tiles', role: 'group', 'aria-label': 'Sound of the gliding voices' }, tiles)), advanced);
 
   for (const id of TRACK_IDS) {
     const name = TRACK_LABEL[id];
     const sel = choice[id]();
     const vol = h('input', { type: 'range', min: 0, max: 1, step: 0.01, 'aria-label': `${name} volume`,
       onInput: e => store.update(p => { p.tracks[id].volume = +e.target.value; }, `mix:vol:${id}`) });
-    const pan = h('input', { type: 'range', class: 'pan', min: -1, max: 1, step: 0.1, 'aria-label': `${name} pan, left to right`,
+    const pan = h('input', { type: 'range', min: -1, max: 1, step: 0.1, 'aria-label': `${name} balance, left to right`,
       onInput: e => store.update(p => { p.tracks[id].pan = Math.abs(+e.target.value) < 0.05 ? 0 : +e.target.value; }, `mix:pan:${id}`) });
-    const mute = h('button', { class: 'tog', type: 'button', text: 'M', 'aria-label': `Mute ${name}`, onClick: () => store.update(p => { p.tracks[id].mute = !p.tracks[id].mute; }, 'mix:mute') });
-    const solo = h('button', { class: 'tog', type: 'button', text: 'S', 'aria-label': `Solo ${name}`, onClick: () => store.update(p => { p.tracks[id].solo = !p.tracks[id].solo; }, 'mix:solo') });
-    const strip = h('div', { class: 'strip', role: 'group', 'aria-label': name },
-      h('div', { class: 'srow' }, h('b', { text: name }), sel, mute, solo),
-      h('div', { class: 'srow' }, h('span', { class: 'cap', text: 'Vol' }), vol, h('span', { class: 'cap', text: 'Pan' }), pan));
+    const mute = h('button', { class: 'tog', type: 'button', text: 'Mute', 'aria-label': `Mute ${name}`, onClick: () => store.update(p => { p.tracks[id].mute = !p.tracks[id].mute; }, 'mix:mute') });
+    const solo = h('button', { class: 'tog', type: 'button', text: 'Only this', 'aria-label': `Solo ${name}`, onClick: () => store.update(p => { p.tracks[id].solo = !p.tracks[id].solo; }, 'mix:solo') });
+    const strip = h('div', { class: 'mix', role: 'group', 'aria-label': name },
+      h('div', { class: 'srow' }, h('b', { text: name }), sel),
+      h('div', { class: 'srow' }, h('span', { class: 'cap', text: 'Volume' }), vol),
+      h('div', { class: 'srow' }, h('span', { class: 'cap', text: 'Balance' }), pan),
+      h('div', { class: 'srow' }, mute, solo));
     ui[id] = { sel, vol, pan, mute, solo, strip };
-    pane.append(strip);
+    advanced.append(strip);
   }
 
   function render() {

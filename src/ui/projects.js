@@ -4,6 +4,7 @@ import { h, ICON } from './dom.js';
 import { openSheet, confirmDialog, promptDialog, toast } from './sheet.js';
 import { pickTextFile, saveBlob } from './files.js';
 import { createProjectStorage, summarize } from '../storage/projects.js';
+import { LIBRARY, KEY_NAMES, progressionSyms, keyString, surprise } from '../core/library.js';
 import { newProject, exampleProject, EXAMPLES, normalizeProject, parseProjectFile, serializeProject, fileBase, newId, ProjectError } from '../core/project.js';
 
 const SAVE_DELAY = 400;       // ms of quiet before an edit is written
@@ -201,9 +202,31 @@ export function initProjects(app) {
       await render();
     }
 
+    /** New project: blank, or one of the common progressions in a key. One tap on a progression makes a project with its chords. */
     async function create() {
-      const p = newProject(untitledName(await names()));
-      await openProject(p); close();
+      const taken = await names();
+      let root = 0;
+      const make = async (name, text, key) => {
+        const p = newProject(freeName(name, taken) || untitledName(taken), text);
+        if (key) p.key = key;
+        await openProject(p); chooser.close(); close();
+      };
+      const keySel = h('select', { id: 'newKey', 'aria-label': 'Key', onChange: e => { root = +e.target.value; draw(); } }, KEY_NAMES.map((n, r) => h('option', { value: String(r), text: n + ' major / minor' })));
+      const list = h('div', { class: 'stack', role: 'list', 'aria-label': 'Common progressions' });
+      function draw() {
+        list.replaceChildren(...LIBRARY.map(prog => {
+          const syms = progressionSyms(prog, root);
+          return h('button', { class: 'ld', type: 'button', role: 'listitem', 'data-prog': prog.id, onClick: () => make(prog.name, syms.join(' '), keyString(prog, root)) },
+            h('span', null, h('b', { text: prog.name }), h('small', { text: syms.join('  ') + ' · ' + prog.mood })), h('i', { html: ICON.right }));
+        }));
+      }
+      draw();
+      const chooser = openSheet({ title: 'New project', id: 'newSheet', body: [
+        h('div', { class: 'btns' },
+          h('button', { class: 'big ghost', type: 'button', id: 'newBlank', text: 'Blank', onClick: () => make(untitledName(taken), '', '') }),
+          h('button', { class: 'big pink', type: 'button', id: 'newSurprise', text: 'Surprise me', onClick: () => { const r = surprise(); make(r.prog.name, r.syms.join(' '), keyString(r.prog, r.root)); } })),
+        h('div', null, h('label', { for: 'newKey', text: 'Start from a common progression, in the key of' }), keySel),
+        list] });
     }
 
     async function importFile() {

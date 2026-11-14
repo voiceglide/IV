@@ -43,7 +43,7 @@ export async function run(browser, url, r) {
   await page.fill('#tempo', '132'); await page.keyboard.press('Enter');
   r.check(await page.evaluate(() => window.__app.store.project.tempo) === 132, 'a valid tempo is applied');
   // typed chords: a wrong token is pointed out, nothing is lost
-  await page.click('details.more summary'); await page.fill('#chordText', 'C G Hx7 F'); await page.waitForTimeout(700);
+  await page.click('summary:has-text("Type the chords")'); await page.fill('#chordText', 'C G Hx7 F'); await page.waitForTimeout(700);
   r.check((await page.innerText('#chordTextErr')).includes('Hx7') && await page.evaluate(() => window.__app.store.project.chords.length) === 4, 'typed chords: the unknown one is named, the progression is kept');
   await page.fill('#chordText', '[Verse] Dm7 G7:2 Cmaj7'); await page.waitForTimeout(700);
   r.check(await page.evaluate(() => window.__app.store.project.chords.map(c => c.sym + (c.beats || '')).join(' ')) === 'Dm7 G72 Cmaj7', 'typed chords: applied with lengths');
