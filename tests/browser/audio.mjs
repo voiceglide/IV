@@ -1,6 +1,8 @@
 // Audio tests, run in a real browser with OfflineAudioContext: every instrument renders an 8-chord progression,
 // then the result is checked for clipping, level and clicks.   node tests/browser/audio.mjs [instrument-id …]
 import { serve, loadPlaywright, reporter, openApp } from './lib.mjs';
+import { SCENES, applyScene } from '../../src/core/scenes.js';
+import { newProject } from '../../src/core/project.js';
 
 const PEAK_MAX = 0.89;            // −1 dBFS: no saturation
 const RMS_DB = [-35, -25];        // every instrument alone sits in this band, so they are comparable
@@ -8,9 +10,9 @@ const PAD_DB = [-27, -19];        // the gliding voices are the lead sound: a li
 const CLICK_MAX = 0.01;           // largest unexplained sample jump (see ui/lab.js)
 
 /** Tests that need the sound itself, not just its level: pitch against the curve, the loop seam, the live-loop gap, the ceiling. */
-async function extra(page, r, only) {
-  const res = await page.evaluate(async only => {
-    const L = window.__app.lab, out = { pitch: [], seam: [], gap: null, ceiling: null, split: [] };
+async function extra(page, r, only, scenes) {
+  const res = await page.evaluate(async ({ only, scenes }) => {
+    const L = window.__app.lab, out = { pitch: [], seam: [], gap: null, ceiling: null, split: [], head: [], scenes: [] };
     const want = id => !only.length || only.includes(id);
     const make = (text, tempo, fn) => { const p = L.newProject('t', text); p.tempo = tempo; for (const t of Object.values(p.tracks)) t.mute = true; fn(p); return L.buildSong(L.normalizeProject(p)).song; };
     const clickOf = d => { let c = 0; for (let i = 3; i < d.length; i++) c = Math.max(c, Math.abs(d[i] - (3 * d[i - 1] - 3 * d[i - 2] + d[i - 3]))); return c; };
@@ -73,8 +75,32 @@ async function extra(page, r, only) {
       Object.assign(p.tracks.voices.split, { bass: b, inner: i, top: t });
       out.split.push([[b, i, t].join('/'), await L.measure(p)]);
     }
+    // ---- the head of the rendered loop (first 100 ms) is no louder than the loudest stretch inside it: the seam cross-fade must not add a bump
+    if (want('head') || want('seam')) {
+      const sr = 48000, H = Math.round(0.1 * sr), full = () => { const g = {}; for (const l of ['kick', 'snare', 'hat', 'open', 'clap', 'tom']) g[l] = new Array(16).fill(3); return g; };
+      const headOf = async (label, song) => {
+        const buf = await L.renderLoop(song, sr), n = buf.length; let pkH = 0, pkR = 0, eH = 0, nH = 0; const wins = [];
+        for (let c = 0; c < 2; c++) { const d = buf.getChannelData(c);
+          for (let i = 0; i < n; i++) { const a = Math.abs(d[i]); if (i < H) { pkH = Math.max(pkH, a); eH += d[i] * d[i]; nH++; } else pkR = Math.max(pkR, a); }
+          if (c === 0) for (let i = H; i + H <= n; i += H) { let e = 0; for (let j = 0; j < H; j++) e += d[i + j] ** 2; wins.push(Math.sqrt(e / H)); } }
+        wins.sort((x, y) => x - y);
+        return { label, pkH, pkR, rmsH: Math.sqrt(eH / nH), rmsMax: wins[wins.length - 1] };
+      };
+      out.head.push(await headOf('pad C:8 @100', make('C:8', 100, p => { p.tracks.voices.mute = false; p.tracks.voices.sound = 'pad'; p.glideStyle.vibrato = 0; })));
+      out.head.push(await headOf('strings 4 chords @100', make('C:2 G:2 Am:2 F:2', 100, p => { p.tracks.voices.mute = false; p.tracks.voices.sound = 'strings'; })));
+      out.head.push(await headOf('all drum lanes at accent, fader .8, 120 bpm', make('C:4 G:4', 120, p => { p.tracks.drums.mute = false; p.tracks.drums.pattern = 'custom'; p.tracks.drums.steps = full(); p.tracks.drums.volume = 0.8; })));
+    }
+    // ---- the worst realistic mixes: every scene, faders at 1.0, a full custom drum grid on top
+    if (want('scenes') || want('ceiling')) for (const raw of scenes) {
+      const p = L.normalizeProject(raw); p.tempo = 100; for (const t of Object.values(p.tracks)) { t.mute = false; t.volume = 1; }
+      p.tracks.drums.pattern = 'custom'; p.tracks.drums.steps = Object.fromEntries(['kick', 'snare', 'hat', 'open', 'clap', 'tom'].map(l => [l, new Array(16).fill(3)]));
+      p.tracks.melody.notes = [{ t: 0, d: 2, m: 76 }, { t: 2, d: 2, m: 79 }];
+      const song = L.buildSong(p).song, buf = await L.renderLoop(song, 48000); let pk = 0;
+      for (let c = 0; c < 2; c++) for (const x of buf.getChannelData(c)) pk = Math.max(pk, Math.abs(x));
+      out.scenes.push({ id: raw.name, pk });
+    }
     return out;
-  }, only);
+  }, { only, scenes });
   for (const p of res.pitch) r.check(p.n > 20 && p.p95 < 10 && p.max < 25, `pitch follows glideCurve: ${p.id} (${p.curve})`, `${p.n} windows · 95 % within ${p.p95.toFixed(1)} cents · worst ${p.max.toFixed(1)}`);
   for (const s of res.seam) r.check(s.seam < Math.max(0.04, s.inner * 1.5) && s.peak < PEAK_MAX, `loop seam is smooth: ${s.id}`, `seam ${s.seam.toFixed(4)} · inside the loop ${s.inner.toFixed(4)} · peak ${s.peak.toFixed(3)}`);
   if (res.gap) {
@@ -82,6 +108,11 @@ async function extra(page, r, only) {
     r.check(g.onsets === g.expected, 'live loop: no drum hit lost or doubled across pass boundaries', `${g.onsets} of ${g.expected}`);
     r.check(g.minGap > g.beat - 0.006 && g.maxGap < g.beat + 0.006, 'live loop: same beat spacing across the boundary as inside the loop', `gaps ${g.minGap.toFixed(3)}…${g.maxGap.toFixed(3)} s, beat = ${g.beat.toFixed(3)} s, ${4} passes of ${g.cycle.toFixed(2)} s`);
   }
+  for (const h of res.head) {
+    const db = x => 20 * Math.log10(x);
+    r.check(db(h.rmsH / h.rmsMax) <= 1 && db(h.pkH / h.pkR) <= 1 && h.pkH <= 0.95, `loop head: no bump (${h.label})`, `head RMS ${db(h.rmsH / h.rmsMax).toFixed(2)} dB vs the loudest 100 ms inside (the voices beat by 2–3 dB on their own) · head peak ${h.pkH.toFixed(3)} vs ${h.pkR.toFixed(3)} (${db(h.pkH / h.pkR).toFixed(2)} dB)`);
+  }
+  for (const sc of res.scenes) r.check(sc.pk <= 0.9, `scene ${sc.id}, faders 1.0 + full drum grid: nothing above 0.90`, `peak ${sc.pk.toFixed(3)}`);
   if (res.ceiling !== null) r.check(res.ceiling < PEAK_MAX, 'all five tracks, every fader at 1.0: peak below the ceiling', `peak ${res.ceiling.toFixed(3)}`);
   for (const [id, m] of res.split) {
     const db = 20 * Math.log10(m.rms);
@@ -104,7 +135,7 @@ export async function run(browser, url, r, only = []) {
     if (want('mix')) out.push(['mix', 'noise', await L.measure(base(p => { p.tracks.voices.mute = false; p.tracks.chords.instrument = L.CHORD_INSTRUMENTS[0].id; p.tracks.bass.pattern = 'pulse'; p.tracks.drums.pattern = 'four'; p.tracks.melody.notes = [{ t: 0, d: 2, m: 76 }, { t: 2, d: 2, m: 79 }]; }))]);
     return out;
   }, only);
-  await extra(page, r, only);
+  await extra(page, r, only, SCENES.map(sc => { const p = newProject(sc.id, 'C:2 G:2 Am:2 F:2'); applyScene(p, sc); p.name = sc.id; return p; }));
   for (const [id, kind, m] of res) {
     const db = 20 * Math.log10(m.rms);
     const info = `peak ${m.peak.toFixed(3)} · ${db.toFixed(1)} dB · click ${m.click.toFixed(4)}`;
