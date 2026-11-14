@@ -29,23 +29,21 @@ export async function run(browser, url, r) {
     // edit: change a chord, undo, redo
     await page.click('#editBtn');
     r.check(await page.isVisible('#paneChords'), `${name}: Edit opens on the chords`);
-    const small = await page.evaluate(() => Array.from(document.querySelectorAll('#edit button, #edit select, #edit input')).filter(e => e.offsetParent && (e.getBoundingClientRect().height < 43.5 || (e.tagName === 'BUTTON' && e.getBoundingClientRect().width < 43.5))).map(e => e.id || e.textContent || e.tagName));
+    const small = await page.evaluate(() => Array.from(document.querySelectorAll('#edit button, #edit select, #edit input:not([type=range])')).filter(e => e.offsetParent && (e.getBoundingClientRect().height < 43.5 || (e.tagName === 'BUTTON' && e.getBoundingClientRect().width < 43.5))).map(e => e.id || e.textContent || e.tagName));
     r.check(small.length === 0, `${name}: every control in Edit is at least 44 px`, small.join(','));
-    await page.click('.chord >> nth=1'); await page.waitForTimeout(150);
+    await page.click('#strip .chord >> nth=1'); await page.waitForTimeout(150);
     r.check(await page.locator('#chordSheet').count() === 0 && await page.evaluate(() => { const a = window.__app, s = a.song(); return Math.abs(+document.getElementById('scrub').value - s.starts[s.n + 1]) < 0.02; }), `${name}: one tap on a chord shows it in the preview (and plays it)`);
-    await page.click('.chord >> nth=1'); await page.waitForSelector('#chordSheet');
-    await page.click('#chordSheet .opt:has-text("minor")');
-    r.check(await page.evaluate(() => window.__app.store.project.chords[1].sym) === 'Gm', `${name}: tapping a type changes the chord`);
-    const over = await page.evaluate(() => { const p = document.querySelector('#chordSheet .panel').getBoundingClientRect(); return p.right > innerWidth + 0.5 || p.bottom > innerHeight + 0.5; });
-    r.check(!over, `${name}: the chord sheet fits the screen`);
-    await page.click('#chordSheet button:has-text("Done")');
+    await page.click('#picker .opt:has-text("minor")');
+    r.check(await page.evaluate(() => window.__app.store.project.chords[1].sym) === 'Gm', `${name}: tapping a type changes the chord (no sheet)`);
+    r.check(await page.locator('.sheet').count() === 0, `${name}: changing a chord opens no sheet`);
     await page.click('#undoBtn');
     r.check(await page.evaluate(() => window.__app.store.project.chords[1].sym) === 'G', `${name}: Undo restores the chord`);
     await page.click('#redoBtn');
     r.check(await page.evaluate(() => window.__app.store.project.chords[1].sym) === 'Gm', `${name}: Redo applies it again`);
-    await page.click('.chord.add'); await page.waitForSelector('#chordSheet');
-    await page.click('#chordSheet button[aria-label="Delete this chord"]');
-    r.check(await page.evaluate(() => window.__app.store.project.chords.length) === 8, `${name}: add then delete leaves 8 chords`);
+    await page.click('#addChord');
+    r.check(await page.evaluate(() => window.__app.store.project.chords.length) === 9, `${name}: + adds a chord`);
+    await page.click('#strip .rm');
+    r.check(await page.evaluate(() => window.__app.store.project.chords.length) === 8 && await page.locator('.toast button:has-text("Undo")').count() === 1, `${name}: the cross removes it and offers Undo`);
     await page.waitForTimeout(200);
     // sound: pick an instrument and a drum pattern, mute, solo; melody: tap two notes, undo one
     await page.click('#tabTracks');
@@ -58,6 +56,8 @@ export async function run(browser, url, r) {
     await page.evaluate(() => window.__app.store.update(p => { p.chords[2].sym = 'A'; }, ''));
     await page.waitForTimeout(300);
     r.check(await page.evaluate(() => window.__app.engine.time()) > after, `${name}: changing a chord while playing keeps the play head`);
+    r.check(await page.evaluate(() => { const t = document.querySelector('.tile').getBoundingClientRect(), a = document.querySelector('details.advanced').getBoundingClientRect(); return t.top < a.top && !document.querySelector('details.advanced').open; }), `${name}: Sound shows the tiles first and the mixer folded under Advanced`);
+    await page.click('details.advanced summary');
     await page.selectOption('select[aria-label="Chord instrument"]', 'kalimba'); await page.selectOption('select[aria-label="Drum pattern"]', 'basic'); await page.selectOption('select[aria-label="Bass pattern"]', 'root');
     await page.waitForTimeout(500);
     r.check(await page.evaluate(() => window.__app.engine.playing && window.__app.store.project.tracks.chords.instrument === 'kalimba'), `${name}: choosing an instrument starts the loop so it is heard`);

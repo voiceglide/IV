@@ -31,7 +31,9 @@ export function openSheet(o) {
       root.remove(); stack.splice(stack.indexOf(handle), 1);
       if (!stack.length) document.body.classList.remove('lock');
       if (o.onClose) o.onClose();
-      if (from && from.focus && document.contains(from)) from.focus({ preventScroll: true });
+      // focus goes back to what opened the sheet; if that is gone or disabled, to a sensible control, never to the page
+      const back = from && from.focus && document.contains(from) && !/** @type {any} */(from).disabled && from !== document.body ? from : document.getElementById('play');
+      if (back) back.focus({ preventScroll: true });
     },
     setTitle(t) { title.textContent = t; panel.setAttribute('aria-label', t); },
   };
@@ -96,5 +98,5 @@ export function toast(text, o = {}) {
   if (o.action) el.append(h('button', { class: 'small ghost', type: 'button', text: o.action, onClick: () => { el.remove(); if (o.onAction) o.onAction(); } }));
   box.append(el);
   clearTimeout(toastTimer);
-  toastTimer = window.setTimeout(() => el.remove(), o.ms || (o.error ? 7000 : 4000));
+  toastTimer = window.setTimeout(() => el.remove(), o.ms || (o.error ? 6000 : 3200));
 }

@@ -15,12 +15,12 @@ export function initMenu() {
       items.map(it => h('button', { class: 'ld', type: 'button', onClick: () => { s.close(); it.run(); } }, h('span', null, h('b', { text: it.label })), h('i', { html: it.icon || ICON.right })))) });
   });
 
-  const keys = [['Space', 'Play or stop'], ['Ctrl/⌘ + Z', 'Undo'], ['Ctrl/⌘ + Shift + Z', 'Redo'], ['E', 'Open or close Edit'], ['1 – 4', 'Switch Edit tab'], ['N', 'Add a chord'], ['X', 'Export'], ['P', 'My projects'], ['?', 'This help'], ['Esc', 'Close a panel']];
+  const keys = [['Space', 'Play or stop'], ['Ctrl/⌘ + Z', 'Undo'], ['Ctrl/⌘ + Shift + Z', 'Redo'], ['E', 'Open or close Edit'], ['1 – 4', 'Switch Edit tab'], ['N', 'Add a chord'], ['Alt + ← →', 'Move the chosen chord'], ['X', 'Export'], ['P', 'My projects'], ['?', 'This help'], ['Esc', 'Close a panel']];
   function openHelp() {
     openSheet({ title: 'Help', id: 'helpSheet', body: h('div', { class: 'stack help' },
       h('ol', { class: 'steps' },
         h('li', null, h('b', { text: 'Listen. ' }), 'Tap Play. Each coloured line is one voice of the chord; watch how little each one moves to reach the next chord.'),
-        h('li', null, h('b', { text: 'Make it yours. ' }), 'Tap Edit, then a chord to change it, or Add for a new one. Sound picks the instruments, Text writes on the video.'),
+        h('li', null, h('b', { text: 'Make it yours. ' }), 'Tap a chord under the preview, then pick a new one below. + adds a chord, and you can drag chords to reorder them. Sound picks the instruments, Text writes on the video.'),
         h('li', null, h('b', { text: 'Keep it. ' }), 'Export saves a video, audio or MIDI file. Your work is saved on this device as you go; My projects (top left) holds all of it.')),
       h('div', { class: 'gh', text: 'Good to know' }),
       h('ul', { class: 'plain' },

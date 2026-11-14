@@ -21,7 +21,8 @@ import { blockVoicing } from '../core/theory.js';
 import { APP_NAME } from '../config.js';
 import * as lab from './lab.js';
 
-const store = createStore();
+const wideScreen = () => window.matchMedia('(min-width:900px) and (min-height:561px)').matches;
+const store = createStore({ editOpen: wideScreen() });
 const engine = createEngine();
 const renderer = createRenderer($('cv'));
 /** @type {any} */ let song = null;
@@ -41,7 +42,7 @@ function play(from) {
 function togglePlay() {
   if (busy) return;
   if (engine.playing) { stop(); return; }
-  if (!song) { toast('Add a chord first: tap Edit, then Add.'); return; }
+  if (!song) { toast('Add a chord first: tap + under the preview.'); return; }
   const at = +scrub.value; play(at >= song.vs && at < song.ve - 0.05 ? at : song.vs);
 }
 
@@ -109,45 +110,63 @@ const app = {
   setEditOpen,
 };
 
-// ---------------------------------------------------------------- edit panel and tabs
+// ---------------------------------------------------------------- edit panel and tabs (state lives in store.ui)
 const TABS = ['Chords', 'Tracks', 'Melody', 'Text'];
-function selectTab(name) {
+function setEditOpen(open, tab) { store.setUi(tab ? { editOpen: open, tab } : { editOpen: open }); }
+function applyUi() {
+  const { tab, editOpen } = store.ui;
   for (const t of TABS) {
-    const on = t === name, tab = $('tab' + t);
-    tab.setAttribute('aria-selected', String(on)); tab.tabIndex = on ? 0 : -1; $('pane' + t).hidden = !on;
+    const on = t === tab, el = $('tab' + t);
+    el.setAttribute('aria-selected', String(on)); el.tabIndex = on ? 0 : -1; $('pane' + t).hidden = !on;
   }
-  $('edit').classList.toggle('tall', name === 'Melody');
-}
-function setEditOpen(open, tab) {
-  $('edit').hidden = !open; $('editBtn').setAttribute('aria-expanded', String(open));
-  if (tab) selectTab(tab);
+  $('edit').hidden = !editOpen; $('edit').classList.toggle('overlay', tab === 'Melody');
+  $('editBtn').setAttribute('aria-expanded', String(editOpen)); document.body.classList.toggle('editing', editOpen);
   dirty = true;
 }
-TABS.forEach(t => $('tab' + t).addEventListener('click', () => selectTab(t)));
+store.subscribeUi(applyUi);
+TABS.forEach(t => $('tab' + t).addEventListener('click', () => store.setUi({ tab: t })));
 document.querySelector('.tabs').addEventListener('keydown', e => {
   const k = /** @type {KeyboardEvent} */(e).key; if (k !== 'ArrowRight' && k !== 'ArrowLeft') return;
-  const live = TABS.filter(t => !$('tab' + t).hidden), i = live.findIndex(t => $('tab' + t).getAttribute('aria-selected') === 'true');
+  const live = TABS.filter(t => !$('tab' + t).hidden), i = live.indexOf(store.ui.tab);
   const next = live[(i + (k === 'ArrowRight' ? 1 : live.length - 1)) % live.length];
-  selectTab(next); $('tab' + next).focus(); e.preventDefault();
+  store.setUi({ tab: next }); $('tab' + next).focus(); e.preventDefault();
 });
-$('editBtn').addEventListener('click', () => setEditOpen($('edit').hidden));
+$('editBtn').addEventListener('click', () => setEditOpen(!store.ui.editOpen));
+
+// ---------------------------------------------------------------- preview: tap to play or pause, full screen
+$('cv').addEventListener('click', togglePlay);
+function setFullscreen(on) {
+  document.body.classList.toggle('fs', on); $('fsBtn').setAttribute('aria-pressed', String(on));
+  $('fsBtn').setAttribute('aria-label', on ? 'Leave full screen' : 'Full-screen preview');
+  $('fsBtn').innerHTML = on ? ICON.close : ICON.expand; dirty = true;
+  const d = /** @type {any} */(document);
+  try { if (on && d.documentElement.requestFullscreen) void d.documentElement.requestFullscreen().catch(() => {}); else if (!on && d.fullscreenElement && d.exitFullscreen) void d.exitFullscreen(); } catch (e) { /* the layout alone is enough */ }
+}
+$('fsBtn').innerHTML = ICON.expand;
+$('fsBtn').addEventListener('click', () => setFullscreen(!document.body.classList.contains('fs')));
+document.addEventListener('fullscreenchange', () => { if (!document.fullscreenElement && document.body.classList.contains('fs')) setFullscreen(false); });
 
 // ---------------------------------------------------------------- transport, undo, shortcuts
 $('play').addEventListener('click', togglePlay);
 scrub.addEventListener('input', () => { if (engine.playing) stop(); dirty = true; });
 $('undoBtn').addEventListener('click', () => store.undo());
 $('redoBtn').addEventListener('click', () => store.redo());
+// a focused button keeps its own Space (keyboard users) unless the person got there with a tap or click
+let pointerUser = false;
+document.addEventListener('pointerdown', () => { pointerUser = true; }, true);
 document.addEventListener('keydown', e => {
   const t = /** @type {HTMLElement} */(e.target), typing = t && (t.tagName === 'INPUT' && /** @type {HTMLInputElement} */(t).type !== 'range' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable);
-  const mod = e.ctrlKey || e.metaKey;
+  const mod = e.ctrlKey || e.metaKey, wasPointer = pointerUser;
+  if (e.key === 'Tab') pointerUser = false;
   if (mod && e.key.toLowerCase() === 'z' && !typing) { e.preventDefault(); if (e.shiftKey) store.redo(); else store.undo(); return; }
   if (mod && e.key.toLowerCase() === 'y' && !typing) { e.preventDefault(); store.redo(); return; }
   if (mod || e.altKey || typing || sheetOpen() || busy) return;
   const k = e.key.toLowerCase();
-  if (e.key === ' ') { if (t && t.tagName === 'BUTTON') return; e.preventDefault(); togglePlay(); }
-  else if (k === 'e') setEditOpen($('edit').hidden);
+  if (e.key === ' ') { if (t && t.tagName === 'BUTTON' && !wasPointer) return; e.preventDefault(); togglePlay(); }
+  else if (e.key === 'Escape' && document.body.classList.contains('fs')) setFullscreen(false);
+  else if (k === 'e') setEditOpen(!store.ui.editOpen);
   else if (k >= '1' && k <= '4') { const live = TABS.filter(x => !$('tab' + x).hidden); if (live[+k - 1]) setEditOpen(true, live[+k - 1]); }
-  else if (k === 'n') { setEditOpen(true, 'Chords'); /** @type {HTMLElement} */(document.querySelector('.chord.add')).click(); }
+  else if (k === 'n') $('addChord').click();
   else if (k === 'x') $('exportBtn').click();
   else if (k === 'p') $('projBtn').click();
   else if (e.key === '?') app.openHelp();
@@ -163,7 +182,7 @@ store.open(exampleProject(0));
 const m = initMenu(); app.menu = m.menu; app.openHelp = m.openHelp;
 const chordsUi = initChords(app);
 initTracks(app); initTextPane(app); const melodyUi = initMelody(app); initExports(app);
-$('tabMelody').hidden = !app.features.melody;
+$('tabMelody').hidden = !app.features.melody; applyUi();
 initProjects(app); initFeedback(app); initPwa(app);
 initWelcome(app);
 
