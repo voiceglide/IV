@@ -1,4 +1,4 @@
-// A small synthesized drum kit: kick, snare, closed hat. Noise comes from one generated buffer.
+// A small synthesized drum kit: kick, snare, closed and open hat, clap, tom. Noise comes from one generated buffer.
 
 /** @type {WeakMap<BaseAudioContext, AudioBuffer>} */
 const NOISE = new WeakMap();
@@ -31,13 +31,29 @@ const HIT = {
     o.connect(g); g.connect(out); o.start(t); o.stop(t + 0.4);
   },
   hat(ac, out, t, v) { burst(ac, out, t, 0.045, 0.07 * v, 'highpass', 7000, 0.8); },
+  open(ac, out, t, v) { burst(ac, out, t, 0.22, 0.06 * v, 'highpass', 6500, 0.8); },
+  clap(ac, out, t, v) {
+    // three quick smacks and a short tail
+    for (const d of [0, 0.011, 0.022]) burst(ac, out, t + d, 0.012, 0.13 * v, 'bandpass', 1500, 1.1);
+    burst(ac, out, t + 0.033, 0.1, 0.12 * v, 'bandpass', 1500, 0.9);
+  },
+  tom(ac, out, t, v) {
+    const o = ac.createOscillator(); o.type = 'sine'; o.frequency.setValueAtTime(150, t); o.frequency.exponentialRampToValueAtTime(85, t + 0.12);
+    const g = ac.createGain(); g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(0.38 * v, t + 0.004); g.gain.setTargetAtTime(0, t + 0.04, 0.09);
+    o.connect(g); g.connect(out); o.start(t); o.stop(t + 0.8);
+  },
 };
+
+/** Play one drum hit at context time t. Unknown lanes are ignored. @param {BaseAudioContext} ac @param {AudioNode} out @param {string} kind @param {number} t @param {number} v 0…1 */
+export function hitDrum(ac, out, kind, t, v) {
+  if (Object.hasOwn(HIT, kind)) HIT[/** @type {'kick'} */(kind)](ac, out, t, Math.max(0, Math.min(1, v)));
+}
 
 /** @param {BaseAudioContext} ac @param {AudioNode} out @param {import('../core/patterns.js').DrumEvent[]} events */
 export function scheduleDrums(ac, out, events, abs, live) {
   for (const e of events) {
     const t = abs(e.t);
     if (live && t < ac.currentTime + 0.005) continue;
-    HIT[e.kind](ac, out, t, e.v);
+    hitDrum(ac, out, e.kind, t, e.v);
   }
 }
