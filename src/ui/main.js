@@ -25,6 +25,7 @@ const wideScreen = () => window.matchMedia('(min-width:900px) and (min-height:56
 const store = createStore({ editOpen: wideScreen() });
 const engine = createEngine();
 const renderer = createRenderer($('cv'));
+renderer.followSystem();
 /** @type {any} */ let song = null;
 let dirty = true, busy = false;
 const scrub = $('scrub');
