@@ -16,8 +16,12 @@ const STYLES = { softpiano: 'tied', arp: 'arp', crystal: 'arpHigh', strumharp: '
 export function songToMidi(song, styleOf = id => STYLES[id] || 'block') {
   const lo = song.cycle, hi = 2 * song.cycle, eps = 1e-6, spb = song.spb, tr = song.tracks;
   const span = { lo, hi: hi - eps, from: lo };
+  const loopBeats = (hi - lo) / spb, loopTicks = Math.round(loopBeats * 480);
+  // every onset lands on a tick inside [0, loop) (one that rounds to the loop end would sound on the next downbeat: dropped),
+  // and every note ends by the loop's last tick (the 0.05-beat minimum never pushes a cut note past it)
   const inLoop = (evs, drums = false) => evs.filter(e => e.t >= lo - eps && e.t < hi - eps)
-    .map(e => ({ t: (e.t - lo) / spb, d: Math.max(0.05, (Math.min(e.t + (e.d || 0.1), hi) - e.t) / spb), m: e.m, v: drums ? Math.round(127 * (e.v || 0.7)) : Math.round(40 + 60 * (e.v || 0.8)) }));
+    .map(e => { const t = (e.t - lo) / spb; return { t, d: Math.min(Math.max(0.05, (Math.min(e.t + (e.d || 0.1), hi) - e.t) / spb), loopBeats - t), m: e.m, v: drums ? Math.round(127 * (e.v || 0.7)) : Math.round(40 + 60 * (e.v || 0.8)) }; })
+    .filter(n => Math.round(n.t * 480) < loopTicks);
   const anySolo = Object.values(tr).some(t => t.solo);
   const audible = id => !tr[id].mute && tr[id].volume > 0 && (!anySolo || tr[id].solo); // same rule as the audio engine
   const tracks = [];
@@ -34,5 +38,5 @@ export function songToMidi(song, styleOf = id => STYLES[id] || 'block') {
   if (tr.bass.pattern !== 'off' && audible('bass')) tracks.push({ name: 'Bass', channel: 2, program: PROGRAM.bass, notes: inLoop(bassEvents(song, tr.bass.pattern, span)) });
   if (tr.melody.notes.length && audible('melody')) tracks.push({ name: 'Melody', channel: 3, program: PROGRAM[tr.melody.instrument] || 0, notes: inLoop(melodyEvents(song, tr.melody.notes, span)) });
   if (tr.drums.pattern !== 'off' && audible('drums')) tracks.push({ name: 'Drums', channel: 9, notes: inLoop(drumEvents(song, tr.drums.pattern, span).map(e => ({ t: e.t, d: 0.1, m: DRUM_NOTE[e.kind], v: e.v })), true) });
-  return encodeMidi({ bpm: song.tempo, endBeat: (hi - lo) / spb, tracks });
+  return encodeMidi({ bpm: song.tempo, endBeat: loopBeats, tracks });
 }
