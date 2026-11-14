@@ -48,6 +48,13 @@ const html = src('index.html')
   .replace('/*STYLE*/', () => fontCss + src('style.css') + extraCss)
   .replace('/*APP*/', () => js);
 writeFileSync(join(dist, 'index.html'), html);
+
+// the listening page: one tap per glide sound (src/sound-check.html), its own small bundle, no outside requests
+const check = await build({
+  entryPoints: [join(root, 'src/soundcheck/main.js')], bundle: true, format: 'iife', minify: true, write: false,
+  target: ['es2020', 'safari14'], legalComments: 'none',
+});
+writeFileSync(join(dist, 'sound-check.html'), src('sound-check.html').replace('/*APP*/', () => check.outputFiles[0].text.replace(/<\/script/gi, '<\\/script')));
 copyFileSync(join(root, 'THIRD-PARTY-NOTICES.md'), join(dist, 'THIRD-PARTY-NOTICES.md'));
 
 // icons and manifest (the app name is injected, never written twice)

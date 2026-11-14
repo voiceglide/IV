@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sound check</title>
+<link rel="icon" href="icons/favicon.svg" type="image/svg+xml">
+<style>
+:root { --bg: #faf8f5; --fg: #1d1b19; --mut: #6b6560; --card: #fff; --line: #ddd6cc; --acc: #c2185b; --accfg: #fff; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg: #151413; --fg: #f1ede8; --mut: #a39d96; --card: #201e1c; --line: #38342f; --acc: #ff6fa5; --accfg: #1d1b19; } }
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--fg); font: 16px/1.4 Inter, system-ui, sans-serif; }
+main { max-width: 640px; margin: 0 auto; padding: 16px; }
+h1 { font-size: 22px; margin: 8px 0 4px; }
+p { color: var(--mut); margin: 4px 0 12px; }
+ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.tile { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 10px; }
+.tile.on { border-color: var(--acc); box-shadow: 0 0 0 2px var(--acc); }
+.tile button { width: 100%; min-height: 56px; text-align: left; background: none; border: 0; color: inherit; font: inherit; cursor: pointer; display: grid; gap: 2px; padding: 4px; }
+.name { font-weight: 700; font-size: 18px; } .hint, .state { color: var(--mut); font-size: 14px; }
+.tile.on .state { color: var(--acc); font-weight: 600; }
+label { display: block; font-size: 13px; color: var(--mut); margin-top: 6px; }
+textarea { width: 100%; font: inherit; color: var(--fg); background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 8px; margin-top: 2px; }
+.bar { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0 16px; align-items: center; }
+.bar button { min-height: 44px; padding: 0 14px; border-radius: 22px; border: 1px solid var(--line); background: var(--card); color: var(--fg); font: inherit; cursor: pointer; }
+.bar button[aria-pressed="true"] { background: var(--acc); color: var(--accfg); border-color: var(--acc); }
+#err { color: #c62828; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Sound check</h1>
+  <p>One tap per sound, always on the same progression: <b id="prog"></b>. The loop repeats until you tap again. Write down what to retouch; notes stay on this device.</p>
+  <div class="bar" role="group" aria-label="Glide curve">
+    <button type="button" data-curve="straight" aria-pressed="false">Straight</button>
+    <button type="button" data-curve="eased" aria-pressed="true">Eased</button>
+    <button type="button" data-curve="scoop" aria-pressed="false">Scoop</button>
+    <button type="button" id="stop">Stop</button>
+  </div>
+  <p id="err" role="alert"></p>
+  <ul id="list"></ul>
+  <div class="bar"><button type="button" id="copy">Copy all notes</button><span id="copied"></span></div>
+  <textarea id="all" rows="14" hidden aria-label="All notes"></textarea>
+</main>
+<script>/*APP*/</script>
+</body>
+</html>
