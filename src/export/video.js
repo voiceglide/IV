@@ -37,16 +37,20 @@ async function audioPeak(ac, arrayBuf) {
 async function exportFrames(song, renderer, engine, vcfg, ainfo, onStatus) {
   onStatus('Rendering audio…', -1);
   const ab = await renderLoop(song, SR);
-  const muxer = new Muxer({ target: new ArrayBufferTarget(), video: { codec: 'avc', width: W, height: H, frameRate: FPS },
+  // The loop lasts exactly as long as the sound (a whole number of samples). The frame count is rounded from 30 fps, then the frame rate is
+  // nudged (29.9…30.1) so that frames × frame duration == loop duration, which keeps video and sound locked on every repeat.
+  const D = ab.length / SR, N = Math.max(1, Math.round(D * FPS)), fdur = D / N;
+  // the muxer uses `frameRate` as the track's time unit: a fine, fixed unit keeps the fractional frame duration exact
+  const muxer = new Muxer({ target: new ArrayBufferTarget(), video: { codec: 'avc', width: W, height: H, frameRate: 90000 },
     audio: { codec: ainfo.mux, numberOfChannels: 2, sampleRate: SR }, fastStart: 'in-memory', firstTimestampBehavior: 'offset' });
   /** @type {any} */ let fail = null;
-  let aChunks = 0, gotDesc = false;
+  /** @type {{data:Uint8Array, type:string, ts:number, dur:number, meta:any}[]} */ const aOut = [];
+  let gotDesc = false;
   const ASC = new Uint8Array([0x11, 0x90]); // AAC-LC, 48 kHz, stereo
   const ae = new AudioEncoder({ output: (ch, m) => {
-    aChunks++;
     // some browsers hand over a whole ES descriptor instead of the 2-byte AAC config, which makes the track unreadable: always use our own
     if (ainfo.mux === 'aac' && !gotDesc) { m = { decoderConfig: { codec: 'mp4a.40.2', sampleRate: SR, numberOfChannels: 2, description: ASC } }; gotDesc = true; }
-    muxer.addAudioChunk(ch, m);
+    const data = new Uint8Array(ch.byteLength); ch.copyTo(data); aOut.push({ data, type: ch.type, ts: ch.timestamp, dur: ch.duration || 0, meta: m });
   }, error: e => { fail = e; } });
   ae.configure(ainfo.cfg);
   const Lc = ab.getChannelData(0), Rc = ab.getChannelData(1), step = 4800, endS = ab.length;
@@ -61,14 +65,16 @@ async function exportFrames(song, renderer, engine, vcfg, ainfo, onStatus) {
       ad = new AudioData({ format: 'f32', sampleRate: SR, numberOfFrames: n, numberOfChannels: 2, timestamp: ts, data }); }
     ae.encode(ad); ad.close();
   }
-  await ae.flush(); ae.close(); if (fail) throw fail; if (!aChunks) throw new Error('no audio was encoded');
+  await ae.flush(); ae.close(); if (fail) throw fail; if (!aOut.length) throw new Error('no audio was encoded');
+  // drop the encoder's padding: frames that start after the loop ended; the last kept frame is cut short in the file's timing
+  const endUs = Math.round(D * 1e6);
+  for (const a of aOut) if (a.ts < endUs) muxer.addAudioChunkRaw(a.data, /** @type {any} */(a.type), a.ts, Math.min(a.dur, endUs - a.ts), a.meta);
   const ve = new VideoEncoder({ output: (ch, m) => muxer.addVideoChunk(ch, m), error: e => { fail = e; } });
   ve.configure(vcfg);
-  const N = Math.round(song.cycle * FPS);
   for (let f = 0; f < N; f++) {
     if (fail) throw fail;
-    renderer.draw(song, song.vs + f / FPS);
-    const vf = new VideoFrame(renderer.canvas, { timestamp: Math.round(f * 1e6 / FPS), duration: Math.round(1e6 / FPS) });
+    renderer.draw(song, song.vs + f * fdur);
+    const vf = new VideoFrame(renderer.canvas, { timestamp: Math.round(f * fdur * 1e6), duration: Math.round(fdur * 1e6) });
     ve.encode(vf, { keyFrame: f % 60 === 0 }); vf.close();
     while (ve.encodeQueueSize > 6) await new Promise(r => setTimeout(r, 2));
     if (f % 15 === 0) { onStatus('Rendering video…', f / N); await tick(); }
@@ -78,7 +84,7 @@ async function exportFrames(song, renderer, engine, vcfg, ainfo, onStatus) {
   onStatus('Checking the sound…', -1);
   const peak = await audioPeak(engine.unlock(), buf.slice(0));
   if (peak !== null && peak < 1e-4) throw new Error('the sound track came out silent');
-  return { blob: new Blob([buf], { type: 'video/mp4' }), ext: 'mp4', desc: `MP4 · 1080×1920 · 30 fps · ${ainfo.mux === 'aac' ? 'AAC' : 'Opus'} sound` };
+  return { blob: new Blob([buf], { type: 'video/mp4' }), ext: 'mp4', desc: `MP4 · 1080×1920 · ${(N / D).toFixed(2)} fps · ${ainfo.mux === 'aac' ? 'AAC' : 'Opus'} sound` };
 }
 
 function exportRealtime(song, renderer, engine, onStatus) {

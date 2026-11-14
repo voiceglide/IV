@@ -24,6 +24,19 @@ const easeOutBack=u=>{u=clamp(u); const c1=1.70158,c3=c1+1; return 1+c3*Math.pow
 export function createRenderer(cv){
 const c=/** @type {CanvasRenderingContext2D} */(cv.getContext('2d'));
 let staffFor=null;
+// ---------- loop time ----------
+// Everything on screen is periodic in song.cycle, so the first frame and the frame one cycle later are identical.
+// phase: seconds since the loop start, in [0,cycle). fold: any time mapped into the exported window [vs,ve) (for pitch lookups).
+// The discrete "event clock" (chord name, lane, rings, pills) runs `lead` seconds ahead of the sound: the name changes when the voices
+// start moving, so the first frame of the loop (which is `lead` before the first chord arrives) already shows the first chord.
+const wrap=(d,cyc)=>d-Math.floor((d+1e-6)/cyc)*cyc;
+const phaseOf=(song,now)=>Math.max(0,wrap(now-song.vs,song.cycle));
+const foldT=(song,t)=>song.vs+Math.max(0,wrap(t-song.vs,song.cycle));
+function clockOf(song,now){
+  const s0=song.starts[song.n], lead=Math.max(0,s0-song.vs);
+  const d=Math.max(0,wrap(now+lead-s0,song.cycle)), i=idxAt(song,s0+d);
+  return {i,since:d-(song.starts[i]-s0),lead};
+}
 // upper voices and bass get their own bands, so the voices spread out and the bass sits just below them
 function yOf(song,k,m){
   if(k===0){const sp=Math.max(song.bHi-song.bLo,7); return L.BB[0]+(song.bHi-m+1)/(sp+2)*(L.BB[1]-L.BB[0]);}
@@ -98,38 +111,40 @@ function drawBg(){
 }
 
 // ---------- header: hook / question / reveal text, then the chord name ----------
-function headerText(song,now){
-  const t=now-song.vs, left=song.ve-now, hook=song.hook, q=song.question;
-  if(song.reveal&&left<=REVEAL) return {kind:'reveal',a:easeOut((REVEAL-left)/0.25),t:REVEAL-left};
-  if(q&&left<=song.qSec) return {kind:'question',a:easeOut((song.qSec-left)/0.2),t:song.qSec-left,txt:q};
-  if(hook&&t<2.45){const out=t>2.3?1-(t-2.3)/0.15:1; return {kind:'hook',a:out,t,txt:hook,drift:t>2.3?8*(t-2.3)/0.15:0};}
-  return null;
+// Layers over one loop (phase p): the hook (or, without one, the quiet meta line) at the start; the question, then the reveal in the last
+// seconds. The late layer fades out just before the wrap and the first layer fades back in, so frame `cycle` equals frame 0.
+const HOOK_ON=2.3, HOOK_OFF=2.45, LATE_OUT=0.35, WRAP_IN=0.12;
+function headerLayers(song,p){
+  const cyc=song.cycle, left=cyc-p;
+  const late=song.reveal&&left<=REVEAL?'reveal':song.question&&left<=song.qSec?'question':null;
+  let lateA=0, lateT=0;
+  if(late){const dur=late==='reveal'?REVEAL:song.qSec; lateT=dur-left; lateA=easeOut(lateT/(late==='reveal'?0.25:0.2))*clamp((left-(WRAP_IN))/(LATE_OUT-WRAP_IN));}
+  const rise=clamp((p-(cyc-WRAP_IN))/WRAP_IN);              // the first layer comes back just before the wrap
+  const early=late&&left>WRAP_IN?0:1;
+  let hookA=0, drift=0;
+  if(song.hook){ if(p<HOOK_ON) hookA=1; else if(p<HOOK_OFF){hookA=1-(p-HOOK_ON)/(HOOK_OFF-HOOK_ON); drift=8*(1-hookA);} if(cyc-p<=WRAP_IN) hookA=Math.max(hookA,rise); hookA*=early; }
+  const metaA=song.hook?easeOut((p-HOOK_OFF)/0.3)*(1-hookA)*(late?0:1):late?rise*early:1;
+  return {late,lateA,lateT,hookA,drift,metaA};
 }
-function drawHeader(song,now,i){
-  const ch=song.chords[i], since=Math.max(0,now-song.starts[i]), ht=headerText(song,now);
+function drawHeader(song,now,i,since){
+  const ch=song.chords[i], p=phaseOf(song,now), H_=headerLayers(song,p);
   c.save();
   // the hook is fully on screen from frame 0 (it is the thumbnail and the first thing read)
-  if(ht&&ht.kind==='hook') drawRich(ht.txt,64,L.hook1,72,10,ht.a,ht.drift);
-  else if(ht&&ht.kind==='question'){font(800,26); c.globalAlpha=ht.a; c.fillStyle=PINK; spaced('YOUR TURN',L.cx,L.kicker,5,'center'); drawRich(ht.txt,64,L.hook1+14,72,ht.t+0.3,ht.a,0);}
-  else if(ht&&ht.kind==='reveal'){
-    c.globalAlpha=ht.a; font(800,26); c.fillStyle=PINK; spaced('IT WAS',L.cx,L.kicker,6,'center');
+  if(H_.hookA>0) drawRich(song.hook,64,L.hook1,72,10,H_.hookA,H_.drift);
+  if(H_.late==='question'&&H_.lateA>0){font(800,26); c.globalAlpha=H_.lateA; c.fillStyle=PINK; spaced('YOUR TURN',L.cx,L.kicker,5,'center'); drawRich(song.question,64,L.hook1+14,72,H_.lateT+0.3,H_.lateA,0);}
+  if(H_.late==='reveal'&&H_.lateA>0){
+    c.globalAlpha=H_.lateA; font(800,26); c.fillStyle=PINK; spaced('IT WAS',L.cx,L.kicker,6,'center');
     const parts=song.reveal.split(/\s+[—–-]\s+/); font(900,70); c.fillStyle=INK; c.textAlign='center';
-    c.fillText(parts[0],L.cx,L.hook1+14+10*(1-ht.a)); if(parts[1]){font(600,38); c.fillStyle='rgba(43,37,32,.62)'; c.fillText(parts.slice(1).join(' — '),L.cx,L.hook1+70);}
-  } else {
+    c.fillText(parts[0],L.cx,L.hook1+14+10*(1-H_.lateA)); if(parts[1]){font(600,38); c.fillStyle='rgba(43,37,32,.62)'; c.fillText(parts.slice(1).join(' — '),L.cx,L.hook1+70);}
+  }
+  if(H_.metaA>0){
     // quiet meta line: section and key
-    const t=now-song.vs, a=song.hook?easeOut((t-2.45)/0.3):1;
-    c.globalAlpha=a; font(800,30); c.fillStyle='#6b625a';
+    c.globalAlpha=H_.metaA; font(800,30); c.fillStyle='#6b625a';
     spaced([ch.section,keyName(song.key,song.sharps)].filter(Boolean).join('   ·   ').toUpperCase(),L.cx,L.hook1,3.5,'center');
   }
-  // chord name: hard cut on the onset with a small settle; smaller while the hook text is up
-  // the chord name steps down to 62% whenever header text is up, so two lines never touch it
-  const t=now-song.vs, hookOn=!!song.hook;
-  let small=1;
-  if(ht&&ht.kind!=='hook') small=1-0.38*easeOut(ht.t/0.3);
-  else if(hookOn&&t<2.45) small=0.62;
-  else if(hookOn&&t<2.75) small=0.62+0.38*easeOut((t-2.45)/0.3);
-  const pop=1+0.06*(1-easeOut(since/0.16));
-  c.globalAlpha=1; c.save(); c.translate(L.cx,L.name); c.scale(small*pop,small*pop); drawChord(ch,0,0,236,INK); c.restore();
+  // chord name: full size from the first frame (the header text sits above it); a small settle on each change
+  const pop=1+0.06*Math.sin(Math.PI*clamp(since/0.2));
+  c.globalAlpha=1; c.save(); c.translate(L.cx,L.name); c.scale(pop,pop); drawChord(ch,0,0,236,INK); c.restore();
   // roman numeral pill
   font(800,40); const rn=ch.rn, rw=c.measureText(rn).width+44;
   c.fillStyle=rgba(PINK,0.12); rr(L.cx-rw/2,L.numRow-38,rw,54,27); c.fill();
@@ -138,20 +153,21 @@ function drawHeader(song,now,i){
 }
 
 // ---------- staff ----------
-function drawStaff(song,now){
-  const pps=SPACING/song.dur, i=idxAt(song,now), ch=song.chords[i], since=now-song.starts[i];
+function drawStaff(song,now,i,since){
+  const pps=SPACING/song.dur, ch=song.chords[i];
   c.save();
   // accent on chords outside the key: a breath of scale and a faint pink flash
   if(ch.strong&&since>=0&&since<0.12){const k=1+0.015*Math.sin(Math.PI*since/0.12); c.translate(L.cx,(L.staffTop+L.staffBot)/2); c.scale(k,k); c.translate(-L.cx,-(L.staffTop+L.staffBot)/2);}
-  for(let j=1;j<song.starts.length;j++){
-    const x=L.playX+(song.starts[j]-now)*pps; if(x<0||x>W) continue;
+  const phs=Math.max(0,wrap(now-song.vs,song.cycle))+song.vs; // `now` brought into [vs,ve); chord boundaries repeat every cycle
+  for(let m=-2;m<=2;m++) for(let j=song.n;j<2*song.n;j++){
+    const x=L.playX+(song.starts[j]+m*song.cycle-phs)*pps; if(x<0||x>W) continue;
     c.strokeStyle='rgba(43,37,32,.05)'; c.lineWidth=2; c.beginPath(); c.moveTo(x,L.staffTop); c.lineTo(x,L.staffBot); c.stroke();
   }
   c.strokeStyle='rgba(43,37,32,.3)'; c.lineWidth=2; c.beginPath(); c.moveTo(L.playX,L.staffTop); c.lineTo(L.playX,L.staffBot); c.stroke();
   c.lineCap='round'; c.lineJoin='round';
   const stroke=pts=>{c.beginPath(); pts.forEach((p,j)=>j?c.lineTo(p[0],p[1]):c.moveTo(p[0],p[1])); c.stroke();};
   const paths=[];
-  for(let k=5;k>=0;k--){const pts=[]; for(let x=-8;x<=W+8;x+=2) pts.push([x,yOf(song,k,pitchAt(song,k,now+(x-L.playX)/pps))]); paths.push({k,pts,split:pts.findIndex(p=>p[0]>=L.playX)});}
+  for(let k=5;k>=0;k--){const pts=[]; for(let x=-8;x<=W+8;x+=2) pts.push([x,yOf(song,k,pitchAt(song,k,foldT(song,now+(x-L.playX)/pps)))]); paths.push({k,pts,split:pts.findIndex(p=>p[0]>=L.playX)});}
   for(const {k,pts,split} of paths){const f=c.createLinearGradient(L.playX,0,W,0); f.addColorStop(0,rgba(VOICE[k],.35)); f.addColorStop(1,rgba(VOICE[k],.05)); c.strokeStyle=f; c.lineWidth=4; stroke(pts.slice(split));}
   for(const {k,pts,split} of paths){
     const past=pts.slice(0,split+1);
@@ -161,7 +177,7 @@ function drawStaff(song,now){
   }
   // dots, with a ring on the voices that just moved
   const cur=[], seen=new Set();
-  for(let k=0;k<6;k++){const p=pitchAt(song,k,now), key=k===0?'b':Math.round(p*4); if(seen.has(key)) continue; seen.add(key); cur.push({k,p,y:yOf(song,k,p),col:VOICE[k],moved:i>0&&slotPitch(song,i,k)!==slotPitch(song,i-1,k)});}
+  for(let k=0;k<6;k++){const p=pitchAt(song,k,foldT(song,now)), key=k===0?'b':Math.round(p*4); if(seen.has(key)) continue; seen.add(key); cur.push({k,p,y:yOf(song,k,p),col:VOICE[k],moved:slotPitch(song,i,k)!==slotPitch(song,i-1,k)});}
   cur.sort((a,b)=>a.y-b.y);
   for(const d of cur){
     if(d.moved&&since>=0&&since<0.35){const u=easeOutQuad(since/0.35); c.strokeStyle=rgba(d.col,0.5*(1-u)); c.lineWidth=3; c.beginPath(); c.arc(L.playX,d.y,16*(1+0.8*u),0,Math.PI*2); c.stroke();}
@@ -175,7 +191,7 @@ function drawStaff(song,now){
   for(let j=lab.length-2;j>=0;j--) if(lab[j+1].ly-lab[j].ly<GAP) lab[j].ly=lab[j+1].ly-GAP;
   const span=Math.min(1.2,(song.starts[i+1]!==undefined?song.starts[i+1]-song.starts[i]:2)*0.8);
   for(const d of lab){
-    const nm=noteName(song,noteAt(song,d.k,now),ch); font(800,32); const pw=c.measureText(nm).width+34, ph=44;
+    const nm=noteName(song,noteAt(song,d.k,foldT(song,now)),ch); font(800,32); const pw=c.measureText(nm).width+34, ph=44;
     c.strokeStyle=rgba(d.col,.5); c.lineWidth=2; c.beginPath(); c.moveTo(L.playX+18,d.y); c.bezierCurveTo(L.playX+44,d.y,LX-26,d.ly,LX-4,d.ly); c.stroke();
     const s=d.moved&&since>=0&&since<0.22?0.85+0.15*easeOutBack(since/0.22):1;
     c.save(); c.translate(LX+pw/2,d.ly); c.scale(s,s); c.translate(-pw/2,0); // pop from the pill's centre, not its left edge
@@ -190,19 +206,18 @@ function drawStaff(song,now){
 }
 
 // ---------- chord lane: previous, current, next ----------
-function drawLane(song,now){
-  const i=idxAt(song,now), since=now-song.starts[i], CW=250, STEP=275, y=L.laneY, h=L.laneH, dx=STEP*(1-easeOut(since/0.26));
+function drawLane(song,now,i,since){
+  const CW=250, STEP=275, y=L.laneY, h=L.laneH, dx=STEP*(1-easeOut(since/0.26));
   c.save(); c.beginPath(); c.rect(40,y-10,900,h+20); c.clip();
   for(let j=i-2;j<=i+2;j++){
-    if(j<0||j>=song.chords.length) continue;
     const cx=L.cx+(j-i)*STEP+dx, x=cx-CW/2, cur=j===i, past=j<i;
     rr(x,y,CW,h,18);
-    if(cur){c.fillStyle=INK; c.fill(); const en=song.starts[j+1]!==undefined?song.starts[j+1]:song.end, p=clamp((now-song.starts[j])/(en-song.starts[j]));
+    if(cur){c.fillStyle=INK; c.fill(); const p=clamp(since/(song.starts[i+1]-song.starts[i]));
       c.save(); c.clip(); c.fillStyle='rgba(255,253,247,.10)'; c.fillRect(x,y,CW*p,h); c.restore();}
     else if(past){c.fillStyle='rgba(43,37,32,.06)'; c.fill();}
     else {c.strokeStyle='rgba(43,37,32,.22)'; c.lineWidth=2.5; c.stroke();}
     font(800,34); c.textAlign='center'; c.fillStyle=cur?'#f6efe3':past?'rgba(43,37,32,.32)':'rgba(43,37,32,.7)';
-    c.fillText(song.chords[j].label,cx,y+h/2+12);
+    c.fillText(song.chords[song.n+(((j-song.n)%song.n)+song.n)%song.n].label,cx,y+h/2+12);
   }
   c.restore();
 }
@@ -210,11 +225,11 @@ function drawLane(song,now){
 // ---------- piano ----------
 function isBlack(m){return [1,3,6,8,10].includes(((m%12)+12)%12)}
 function kbRange(song){let mn=99,mx=0; for(const v of song.v){mn=Math.min(mn,v.bass); mx=Math.max(mx,v.upper[0]);} let lo=mn-1,hi=mx+1; while(isBlack(lo)) lo--; while(isBlack(hi)) hi++; return [lo,hi];}
-function drawPiano(song,now){
-  const [lo,hi]=song.kb||(song.kb=kbRange(song)), i=idxAt(song,now), since=now-song.starts[i];
+function drawPiano(song,now,i,since){
+  const [lo,hi]=song.kb||(song.kb=kbRange(song));
   const whites=[]; for(let m=lo;m<=hi;m++) if(!isBlack(m)) whites.push(m);
   const ww=Math.min(56,(L.colR-L.colL)/whites.length), tw=ww*whites.length, x0=L.cx-tw/2, pad=16, y=L.kbY, h=L.kbH;
-  const act=new Map(); for(let k=5;k>=0;k--) act.set(noteAt(song,k,now),VOICE[k]);
+  const act=new Map(); for(let k=5;k>=0;k--) act.set(noteAt(song,k,foldT(song,now)),VOICE[k]);
   const fresh=new Set(); if(i>0) for(let k=0;k<6;k++) if(slotPitch(song,i,k)!==slotPitch(song,i-1,k)) fresh.add(slotPitch(song,i,k));
   const press=m=>act.has(m)?(fresh.has(m)&&since>=0&&since<0.08?4*since/0.08:4):0;
   c.save();
@@ -241,9 +256,9 @@ function drawPiano(song,now){
 function draw(song,now){
   c.globalAlpha=1; c.shadowColor='transparent'; drawBg();
   if(!song){font(700,44); c.fillStyle='rgba(43,37,32,.5)'; c.textAlign='center'; c.fillText('Add a chord to begin',W/2,H/2); return;}
-  const i=idxAt(song,now), since=now-song.starts[i];
+  const {i,since}=clockOf(song,now);
   if(song.chords[i].strong&&since>=0&&since<0.1){c.fillStyle=rgba(PINK,0.03); c.fillRect(0,0,W,H);}
-  drawHeader(song,now,i); drawStaff(song,now); drawLane(song,now); drawPiano(song,now);
+  drawHeader(song,now,i,since); drawStaff(song,now,i,since); drawLane(song,now,i,since); drawPiano(song,now,i,since);
   const handle=song.watermark;
   if(handle){c.save(); font(700,28); c.fillStyle='rgba(43,37,32,.6)'; c.textAlign='center'; c.fillText(handle,L.cx,L.handle); c.restore();}
 }
@@ -251,6 +266,8 @@ function draw(song,now){
 return {
   /** Draw the frame at time `now` (seconds on the song's own clock). A null song draws the empty state. */
   draw(song,now){ if(song&&staffFor!==song){paintStaticLayers(song); staffFor=song;} draw(song,now); },
+  /** What the header shows at `now` (for tests): the chord label. */
+  debug(song,now){ const {i}=clockOf(song,now); return {chord:song.chords[i].label}; },
   canvas:cv,
 };
 }
