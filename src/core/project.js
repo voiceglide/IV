@@ -1,6 +1,6 @@
 // Project data: the one JSON document that describes a piece. Versioned, with migrations from older files.
 // Pure functions, no DOM, no audio, no storage.
-import { parseProgression, chordToText } from './theory.js';
+import { parseProgression, parseChord, chordToText, MAX_CHORDS } from './theory.js';
 
 export const FORMAT = 'chord-project';
 export const VERSION = 3;
@@ -38,6 +38,8 @@ export const GLIDE_CURVES = ['straight', 'eased', 'scoop'];
 /** @type {GlideStyle} */
 const DEFAULT_STYLE = { curve: 'eased', vibrato: 0.5, swell: 0.5 };
 const mix = (volume = 0.8) => ({ volume, pan: 0, mute: false, solo: false });
+/** Melody note limits, in beats from the loop start. */
+export const NOTE_MAX_T = 8192, NOTE_MIN_D = 0.05, NOTE_MAX_D = 256;
 const clamp = (x, lo, hi) => Math.max(lo, Math.min(hi, x));
 const num = (x, d) => (typeof x === 'number' && isFinite(x) ? x : d);
 const shortId = () => newId().slice(0, 8);
@@ -55,14 +57,18 @@ export function chordsFromText(text) {
   return {
     chords: p.chords.map(c => ({ sym: chordToText(Object.assign({}, c, { beats: null })), beats: c.beats || null, section: c.secStart ? c.section : '' })),
     bad: p.bad,
+    error: p.error || '',
   };
 }
+
+/** Section names live in "[...]" in the text, so they may not contain brackets or line breaks. */
+const cleanSection = x => String(x).replace(/[[\]\r\n]+/g, ' ').trim();
 
 /** Chord items → text, one section per line. */
 export function chordsToText(chords) {
   let out = '';
   for (const c of chords) {
-    if (c.section) out += (out ? '\n' : '') + `[${c.section}] `;
+    if (c.section && cleanSection(c.section)) out += (out ? '\n' : '') + `[${cleanSection(c.section)}] `;
     else if (out && !out.endsWith(' ')) out += ' ';
     out += c.sym + (c.beats ? ':' + c.beats : '');
   }
@@ -114,7 +120,7 @@ const MIGRATIONS = {
     p.key = str(String(old.key === undefined ? 'auto' : old.key), 'auto', 8);
     p.glide = num(typeof old.glide === 'string' ? parseFloat(old.glide) : old.glide, 0.26);
     p.text = { hook: str(old.hook), question: str(old.question || old.q), reveal: str(old.title), watermark: str(old.handle) };
-    const [instrument, muteVoices] = SOUND_V1[old.sound] || SOUND_V1.pad;
+    const [instrument, muteVoices] = typeof old.sound === 'string' && Object.hasOwn(SOUND_V1, old.sound) ? SOUND_V1[old.sound] : SOUND_V1.pad;
     p.tracks.chords.instrument = instrument; p.tracks.voices.mute = muteVoices;
     if (typeof old.id === 'string') p.id = old.id;
     return p;
@@ -139,9 +145,11 @@ export class ProjectError extends Error {}
 export function normalizeProject(raw) {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new ProjectError('This file is not a project.');
   let v = raw.version === undefined ? 1 : raw.version;
-  if (typeof v !== 'number' || v < 1) throw new ProjectError('This file is not a project.');
+  if (typeof v !== 'number' || !Number.isInteger(v) || v < 1) throw new ProjectError('This file is not a project.');
   if (v > VERSION) throw new ProjectError('This project was made with a newer version of the app. Reload the app to update it, then try again.');
   if (v === 1 && raw.prog === undefined && raw.chords === undefined) throw new ProjectError('This file is not a project.');
+  // a file that says version 1 but already holds a chord list is a newer file with a wrong stamp: read it as it is
+  if (v === 1 && raw.prog === undefined && Array.isArray(raw.chords)) v = 2;
   let p = raw;
   while (v < VERSION) { p = MIGRATIONS[v](p); v++; }
   if (raw.version === VERSION && raw.format !== FORMAT) throw new ProjectError('This file is not a project.');
@@ -149,15 +157,15 @@ export function normalizeProject(raw) {
   const d = newProject();
   const mixOf = (m, dm) => ({ volume: clamp(num(m && m.volume, dm.volume), 0, 1), pan: clamp(num(m && m.pan, 0), -1, 1), mute: !!(m && m.mute), solo: !!(m && m.solo) });
   const t = p.tracks && typeof p.tracks === 'object' ? p.tracks : {};
-  const chords = (Array.isArray(p.chords) ? p.chords : []).slice(0, 512).map(c => {
+  const chords = (Array.isArray(p.chords) ? p.chords : []).slice(0, MAX_CHORDS).map(c => {
     if (!c || typeof c.sym !== 'string') return null;
-    const one = chordsFromText(c.sym).chords[0]; if (!one) return null;
+    const one = parseChord(c.sym.slice(0, 40)); if (!one) return null;
     const beats = typeof c.beats === 'number' && isFinite(c.beats) ? clamp(c.beats, 0.25, 64) : null;
-    return { id: str(c.id, '', 16) || shortId(), sym: one.sym, beats, section: str(c.section, '', 60) };
+    return { id: str(c.id, '', 16) || shortId(), sym: chordToText({ ...one, beats: null }), beats, section: cleanSection(str(c.section, '', 60)) };
   }).filter(Boolean);
   const notes = (Array.isArray(t.melody && t.melody.notes) ? t.melody.notes : []).slice(0, 4096)
     .filter(n => n && [n.t, n.d, n.m].every(x => typeof x === 'number' && isFinite(x)) && n.d > 0 && n.t >= 0)
-    .map(n => ({ t: n.t, d: n.d, m: clamp(Math.round(n.m), 24, 108) }));
+    .map(n => ({ t: clamp(n.t, 0, NOTE_MAX_T), d: clamp(n.d, NOTE_MIN_D, NOTE_MAX_D), m: clamp(Math.round(n.m), 24, 108) }));
   const key = /^(auto|([0-9]|1[01])(:m)?)$/.test(String(p.key)) ? String(p.key) : 'auto';
   return {
     format: FORMAT, version: VERSION,
@@ -174,8 +182,8 @@ export function normalizeProject(raw) {
     tracks: {
       voices: { ...mixOf(t.voices, d.tracks.voices), sound: str(t.voices && t.voices.sound, 'pad', 24) || 'pad', split: splitOf(t.voices && t.voices.split) },
       chords: { ...mixOf(t.chords, d.tracks.chords), instrument: str(t.chords && t.chords.instrument, 'none', 24) || 'none' },
-      bass: { ...mixOf(t.bass, d.tracks.bass), instrument: 'bass', pattern: t.bass && t.bass.pattern in BASS_PATTERNS ? t.bass.pattern : 'off' },
-      drums: { ...mixOf(t.drums, d.tracks.drums), pattern: t.drums && t.drums.pattern in DRUM_PATTERNS ? t.drums.pattern : 'off' },
+      bass: { ...mixOf(t.bass, d.tracks.bass), instrument: 'bass', pattern: t.bass && typeof t.bass.pattern === 'string' && Object.hasOwn(BASS_PATTERNS, t.bass.pattern) ? t.bass.pattern : 'off' },
+      drums: { ...mixOf(t.drums, d.tracks.drums), pattern: t.drums && typeof t.drums.pattern === 'string' && Object.hasOwn(DRUM_PATTERNS, t.drums.pattern) ? t.drums.pattern : 'off' },
       melody: { ...mixOf(t.melody, d.tracks.melody), instrument: str(t.melody && t.melody.instrument, 'celesta', 24) || 'celesta', notes },
     },
   };
@@ -187,7 +195,7 @@ const splitOf = s => { const g = k => (s && typeof s[k] === 'string' && s[k] ? s
 /** Parse the text of a .json project file. Throws ProjectError with a readable message. */
 export function parseProjectFile(text) {
   let raw;
-  try { raw = JSON.parse(text); } catch (e) { throw new ProjectError('This file could not be read: it is not valid JSON. Pick a project file exported from this app.'); }
+  try { raw = JSON.parse(String(text).replace(/^\uFEFF/, '')); } catch (e) { throw new ProjectError('This file could not be read: it is not valid JSON. Pick a project file exported from this app.'); }
   return normalizeProject(raw);
 }
 

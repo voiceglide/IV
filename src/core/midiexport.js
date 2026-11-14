@@ -17,7 +17,8 @@ export function songToMidi(song, styleOf = id => STYLES[id] || 'block') {
   const span = { lo, hi: hi - eps, from: lo };
   const inLoop = evs => evs.filter(e => e.t >= lo - eps && e.t < hi - eps)
     .map(e => ({ t: (e.t - lo) / spb, d: Math.max(0.05, (Math.min(e.t + (e.d || 0.1), hi) - e.t) / spb), m: e.m, v: Math.round(40 + 60 * (e.v || 0.8)) }));
-  const audible = id => !tr[id].mute && tr[id].volume > 0;
+  const anySolo = Object.values(tr).some(t => t.solo);
+  const audible = id => !tr[id].mute && tr[id].volume > 0 && (!anySolo || tr[id].solo); // same rule as the audio engine
   const tracks = [];
   if (audible('voices')) {
     const notes = [];
@@ -32,5 +33,5 @@ export function songToMidi(song, styleOf = id => STYLES[id] || 'block') {
   if (tr.bass.pattern !== 'off' && audible('bass')) tracks.push({ name: 'Bass', channel: 2, program: PROGRAM.bass, notes: inLoop(bassEvents(song, tr.bass.pattern, span)) });
   if (tr.melody.notes.length && audible('melody')) tracks.push({ name: 'Melody', channel: 3, program: PROGRAM[tr.melody.instrument] || 0, notes: inLoop(melodyEvents(song, tr.melody.notes, span)) });
   if (tr.drums.pattern !== 'off' && audible('drums')) tracks.push({ name: 'Drums', channel: 9, notes: inLoop(drumEvents(song, tr.drums.pattern, span).map(e => ({ t: e.t, d: 0.1, m: DRUM_NOTE[e.kind], v: e.v }))) });
-  return encodeMidi({ bpm: song.tempo, tracks });
+  return encodeMidi({ bpm: song.tempo, endBeat: (hi - lo) / spb, tracks });
 }

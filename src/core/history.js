@@ -16,7 +16,8 @@ export function createHistory(limit = 200) {
      */
     push(state, tag = '', now = Date.now(), mergeMs = 800) {
       if (state === present) return;
-      const merge = tag && tag === lastTag && now - lastAt < mergeMs && past.length;
+      const dt = now - lastAt; // a clock that went backwards never merges
+      const merge = tag && tag === lastTag && dt >= 0 && dt < mergeMs && past.length;
       if (!merge) { past.push(present); if (past.length > limit) past.shift(); }
       present = state; future = []; lastTag = tag; lastAt = now;
     },

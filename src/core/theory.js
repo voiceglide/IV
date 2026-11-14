@@ -23,7 +23,7 @@ export const MINORISH=new Set(['m','m7','m6','m9','madd9','mmaj7','dim','dim7','
 export const LETTER={C:0,D:2,E:4,F:5,G:7,A:9,B:11};
 export function accVal(a){return (a==='#'||a==='♯')?1:(a==='b'||a==='♭')?-1:0}
 export function accSym(a){return (a==='#'||a==='♯')?'♯':(a==='b'||a==='♭')?'♭':''}
-export function normQ(s){s=s.replace(/♭/g,'b').replace(/♯/g,'#').trim();if(s in Q)return s;if(s in QALIAS)return QALIAS[s];return null}
+export function normQ(s){s=s.replace(/♭/g,'b').replace(/♯/g,'#').trim();if(Object.hasOwn(Q,s))return s;if(Object.hasOwn(QALIAS,s))return QALIAS[s];return null}
 export function makeChord(letter,acc,q,slashTxt){
   const root=(LETTER[letter]+accVal(acc)+12)%12; let bass=root;
   if(slashTxt){bass=(LETTER[slashTxt[0]]+accVal(slashTxt.slice(1))+12)%12;}
@@ -38,21 +38,39 @@ export function parseChord(s){
   const q=normQ(m[3]); if(q===null) return null;
   return makeChord(m[1],m[2],q,m[4]?m[4].toUpperCase()+(m[5]||''):'');
 }
+export const MAX_CHORDS=512, MAX_REPEAT=64, MAX_EXPANDED_CHARS=20000;
+export const MSG_TOO_BIG='This progression is too long: the repeats expand to more than '+MAX_CHORDS+' chords. Shorten it or use fewer repeats.';
+/** Thrown when repeats would expand beyond a sane size. The message is written for the person using the app. */
+export class ProgressionError extends Error {}
+// Section names "[...]" and lyrics "..." are protected while repeats expand, so "(soft)x2" inside a name stays text.
 export function expandRepeats(text){
-  let prev; do{prev=text; text=text.replace(/\(([^()]*)\)\s*[x×*](\d+)/g,(_,body,n)=>Array(Math.min(64,+n)).fill(body).join(' '));}while(text!==prev);
-  return text.replace(/[()]/g,' ');
+  const kept=[]; text=String(text).replace(/[]/g,' ');
+  text=text.replace(/"[^"]*"|\[[^\]]*\]/g,m=>{kept.push(m); return ''+(kept.length-1)+'';});
+  let prev;
+  do{prev=text; text=text.replace(/\(([^()]*)\)\s*[x×*](\d+)/g,(_,body,n)=>{
+    const k=Math.min(MAX_REPEAT,+n); if(body.length*k>MAX_EXPANDED_CHARS) throw new ProgressionError(MSG_TOO_BIG);
+    return Array(k).fill(body).join(' ');});
+    if(text.length>MAX_EXPANDED_CHARS) throw new ProgressionError(MSG_TOO_BIG);
+  }while(text!==prev);
+  return text.replace(/[()]/g,' ').replace(/(\d+)/g,(_,i)=>kept[+i]);
 }
+/** On a progression that is too large, chords is empty and `error` says why (it is also put in `bad`).
+ * @returns {{chords:any[], bad:string[], sharps:boolean, error?:string}} */
 export function parseProgression(text){
-  const toks=expandRepeats(text).match(/"[^"]*"|\[[^\]]*\]|[^\s|,]+/g)||[]; const out=[], bad=[];
+  text=String(text);
+  let expanded;
+  try{expanded=expandRepeats(text);}catch(e){if(e instanceof ProgressionError) return {chords:[],bad:['(too many repeats)'],sharps:false,error:e.message}; throw e;}
+  const toks=expanded.match(/"[^"]*"|\[[^\]]*\]|\[[^\s]*|(?:[^\s|,]|(?<=:\d),(?=\d))+/g)||[]; const out=[], bad=[];
   let section='', lyric=null, secStart=true;
   for(const t of toks){
     if(t[0]==='"'){lyric=t.slice(1,-1).trim(); continue;}
-    if(t[0]==='['){section=t.slice(1,-1).trim(); secStart=true; continue;}
+    if(t[0]==='['){ if(t[t.length-1]!==']'){bad.push(t); continue;} section=t.slice(1,-1).trim(); secStart=true; continue;}
     let beats=null, body=t; const mm=t.match(/^(.+?):(\d+(?:[.,]\d+)?)$/);
     if(mm){body=mm[1]; beats=Math.max(0.25,parseFloat(mm[2].replace(',','.')));}
     const c=parseChord(body);
     if(c){c.beats=beats; c.section=section; c.secStart=secStart; secStart=false; c.lyric=lyric; lyric=null; out.push(c);} else bad.push(t);
   }
+  if(out.length>MAX_CHORDS) return {chords:[],bad:['(too many chords)'],sharps:false,error:MSG_TOO_BIG};
   return {chords:out,bad,sharps:/[#♯]/.test(text)};
 }
 export function chordToText(c){
@@ -135,6 +153,7 @@ export function romanOf(c,key){
   let num=MINORISH.has(c.q)?ROMAN_MIN[deg]:ROMAN[deg];
   if(key.minor){ // natural-minor spellings: ♭III, ♭VI, ♭VII are diatonic
     const mm={3:'III',8:'VI',10:'VII'}; if(mm[deg]) num=MINORISH.has(c.q)?mm[deg].toLowerCase():mm[deg];
+    else if(deg===4||deg===9||deg===11) num='♯'+num; // raised III, VI, VII stay apart from the natural ones above
   }
   const suf={'7':'7','maj7':'maj7','m7':'7','6':'6','m6':'6','dim':'°','dim7':'°7','m7b5':'ø7','aug':'+','sus4':'sus4','sus2':'sus2','7sus4':'7sus4','9':'9','maj9':'maj9','m9':'9','13':'13','add9':'add9','madd9':'add9','mmaj7':'maj7','5':'5'}[c.q]||'';
   return num+suf;
