@@ -144,5 +144,14 @@ async function textFit(page, r) {
       r.check(res.some(x => x.wm), `text fit (${kind}) ${theme} ${name}: the watermark is drawn`);
     }
   }
+  // right-to-left hook: the first word stands at the right end of the line
+  await page.evaluate(() => { /** @type {any} */(window).__app.store.update(p => { Object.assign(p.text, { hook: 'שלום עולם יפה', question: '', reveal: '', watermark: '' }); }, 'text:test'); });
+  await page.waitForFunction('!!window.__app.song()');
+  const order = await page.evaluate(() => {
+    const app = /** @type {any} */(window).__app, s = app.song(), g = app.renderer.canvas.getContext('2d'), orig = g.fillText, got = [];
+    g.fillText = function (txt, x, ...rest) { if (/[\u0590-\u05FF]/.test(txt)) got.push({ txt, x }); return orig.call(g, txt, x, ...rest); };
+    app.renderer.draw(s, s.vs); g.fillText = orig; return got.sort((a, b) => a.x - b.x).map(b => b.txt);
+  });
+  r.check(order.join(' ') === 'יפה עולם שלום', 'text fit: a right-to-left hook reads from the right (first word rightmost)', order.join(' '));
   await page.evaluate(t => { /** @type {any} */(window).__app.store.update(p => { Object.assign(p.text, t); }, 'text:test'); }, keep);
 }

@@ -100,12 +100,12 @@ function timeAxis(song, sp) {
 
 /**
  * @param {HTMLCanvasElement|OffscreenCanvas} cv
- * @param {{w?:number, h?:number, theme?:string|import('./theme.js').Theme}} [opts]
+ * @param {{w?:number, h?:number, theme?:string|import('./theme.js').Theme, readback?:boolean}} [opts] readback: the pixels are read after every frame (video export)
  */
 export function createRenderer(cv, opts = {}) {
   let w = opts.w || W, h = opts.h || H, th = resolveTheme(opts.theme), L = layoutFor(w, h);
   cv.width = w; cv.height = h;
-  const c = /** @type {CanvasRenderingContext2D} */(cv.getContext('2d'));
+  const c = /** @type {CanvasRenderingContext2D} */(cv.getContext('2d', opts.readback ? { willReadFrequently: true } : undefined));
   const mk = () => typeof document !== 'undefined' ? Object.assign(document.createElement('canvas'), { width: w, height: h }) : new OffscreenCanvas(w, h);
   let grain = /** @type {any} */(null), staff = /** @type {any} */(null), staffFor = /** @type {any} */(null), axis = /** @type {any} */(null);
   const ia = a => `rgba(${th.inkRGB},${a})`;
@@ -132,9 +132,13 @@ export function createRenderer(cv, opts = {}) {
   }
 
   // ---------- drawing helpers ----------
-  const font = (wt, px) => { c.font = `${wt} ${Math.round(px * 10) / 10}px Inter, system-ui, sans-serif`; };
+  const font = (wt, px) => { c.font = `${wt} ${Math.round(px * 10) / 10}px Inter, system-ui, "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif`; };
   function rr(x, y, ww, hh, r) { c.beginPath(); if (c.roundRect) c.roundRect(x, y, ww, hh, r); else c.rect(x, y, ww, hh); }
-  function spaced(txt, x, y, sp, align) { let tw = 0; for (const ch of txt) tw += c.measureText(ch).width + sp; tw -= sp; let xx = align === 'center' ? x - tw / 2 : align === 'right' ? x - tw : x; c.textAlign = 'left'; for (const ch of txt) { c.fillText(ch, xx, y); xx += c.measureText(ch).width + sp; } return tw; }
+  const RTL = /[\u0590-\u08FF\uFB1D-\uFDFF\uFE70-\uFEFF]/;
+  function spaced(txt, x, y, sp, align) {
+    if (RTL.test(txt)) { c.textAlign = align; c.fillText(txt, x, y); return c.measureText(txt).width; }
+    /* letter by letter would break the joined letters of Arabic and the order of Hebrew, so those are drawn whole */
+     let tw = 0; for (const ch of txt) tw += c.measureText(ch).width + sp; tw -= sp; let xx = align === 'center' ? x - tw / 2 : align === 'right' ? x - tw : x; c.textAlign = 'left'; for (const ch of txt) { c.fillText(ch, xx, y); xx += c.measureText(ch).width + sp; } return tw; }
   // ---------- text that always fits ----------
   // fit(): the largest size in [minPx, px] at which `txt` fits `maxW`; at the minimum the text is cut with an ellipsis. Results are cached.
   const fitCache = new Map();
@@ -202,12 +206,13 @@ export function createRenderer(cv, opts = {}) {
   }
   function drawRich(txt, size, y1, lh, t, alpha, drift) {
     if (alpha <= 0 || !txt) return;
-    const lay = layoutRich(txt, size, lh), lines = lay.lines; size = lay.size; lh = lay.lh;
+    const lay = layoutRich(txt, size, lh), lines = lay.lines, rtl = RTL.test(txt); size = lay.size; lh = lay.lh;
     font(800, size); const sp = c.measureText(' ').width; let wi = 0;
     c.save(); c.textAlign = 'left';
     lines.forEach((ln, j) => {
       const tw = ln.reduce((a, wd, q) => a + c.measureText(wd.t).width + (q ? sp : 0), 0); let x = L.cx - tw / 2;
-      for (const wd of ln) { const u = easeOut((t - wi * 0.06) / 0.32); c.globalAlpha = alpha * u; c.fillStyle = wd.pink ? th.pink : th.ink;
+      // right-to-left text: the first word of the line stands at its right end
+      for (const wd of rtl ? [...ln].reverse() : ln) { const u = easeOut((t - wi * 0.06) / 0.32); c.globalAlpha = alpha * u; c.fillStyle = wd.pink ? th.pink : th.ink;
         c.fillText(wd.t, x, y1 + j * lh + 16 * L.k * (1 - u) - drift); x += c.measureText(wd.t).width + sp; wi++; }
     });
     c.restore();
