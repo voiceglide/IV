@@ -52,7 +52,7 @@ simulated) · storage unavailable (falls back to memory with a notice) · no cho
 - **Loop seam in WAV/video audio**: the gliding voices are free-running oscillators, so the last sample of the loop does not meet the first one exactly (a step of about 0.04 of full scale was measured). On repeat this can be a faint tick. Reproduce: export WAV, loop it in an audio editor.
 - **Video sound codec**: where the browser cannot encode AAC the MP4 carries Opus sound (seen in headless Chromium on Linux); some players and platforms refuse it. Chrome on Android/desktop and Safari normally provide AAC.
 - **Very long loops**: a 200-chord progression plays and exports, but the video export holds the whole file in memory.
-- **Melody grid**: touch and mouse only; shows one octave of the key at a time; notes outside the key cannot be entered.
+- **Melody grid**: touch and mouse only; shows two octaves of the key at a time; notes outside the key cannot be entered.
 - **Glyphs**: ♭ and ♯ come from the system font, so their look varies slightly between devices.
 - **`main` branch**: still the one-line placeholder; see RAPPORT.md.
 

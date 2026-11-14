@@ -1,6 +1,6 @@
-# NOM
+# IV
 
-Placeholder name: the product name lives in one constant, `APP_NAME` in `src/config.js`.
+The product name lives in one constant, `APP_NAME` in `src/config.js` (currently "IV"); it is a working name until the owner picks the final one.
 
 A chord progression editor that shows how each voice moves from chord to chord. It plays the progression and exports a vertical video, audio (WAV), MIDI or a project file. It runs entirely in the browser: no account, no server, works offline, and can be installed on a phone.
 

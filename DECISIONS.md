@@ -39,6 +39,8 @@ Choices made without asking, in order. Short on purpose.
 ## Steps 4 and 5
 - Tracks are fixed, not free-form: gliding voices (the master chord track), a chord instrument, bass, drums, melody. This keeps the app light and centred on the gliding voices.
 - Bass and drums are chosen as patterns that follow the chords, not drawn note by note.
-- The melody is tapped on a grid limited to the notes of the key (one octave, two positions), with the chord tones marked. One voice only. The grid is touch and mouse only; it has no keyboard equivalent yet.
+- The melody is tapped on a grid limited to the notes of the key (two octaves), with the chord tones marked. One voice only. The grid is touch and mouse only; it has no keyboard equivalent yet.
 - WAV and video exports are exactly one seamless loop. MIDI export has one track per audible part.
 - Mixer changes (volume, pan, mute, solo) apply to the sound that is playing without restarting it; a new instrument or pattern restarts from the same position.
+- Foundations hardening: lookups of chord qualities, patterns and sounds use own-property checks (never `in`); repeats expand to at most 512 chords in total and a longer progression gives a plain error instead of a partial list; a chord `sym` is always one chord; stored projects carry a `rev` and a save over a newer revision from another tab is refused (`conflict`), never silently overwritten; unreadable stored records are listed so they can be deleted.
+- Minor-key numerals mark the raised degrees (♯III, ♯VI, ♯VII) so they never collide with the natural ones.

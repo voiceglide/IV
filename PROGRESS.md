@@ -46,9 +46,13 @@ checked with `node scripts/profile-instrument.mjs <id>`. The bass track keeps a 
 5. Quality bar for everything: static page with no outside request; offline and installable; work never lost;
    usable at 375 px with 44 px targets; undo/redo; plain-English errors; accessible; nothing half-finished shown;
    no personal or platform names anywhere (code, metadata, history); no third-party samples or real songs;
-   the product name stays the placeholder in `APP_NAME` until the owner picks the final one.
+   the product name stays a working name ("IV") in `APP_NAME` until the owner picks the final one.
 
 ## Commands
 `npm run check` (lint, types, build, unit tests, browser tests) · `npm run build` → `dist/` ·
 `OUT_DIR=dist-x npm run build` + `APP_DIST=dist-x node tests/browser/run.mjs <name>` for a side build ·
 `node scripts/profile-instrument.mjs <id>` to describe a sound in numbers.
+
+## Foundations hardening (audit fixes)
+Done in `src/core` and `src/storage` with tests in `tests/hardening.test.mjs`, `tests/fuzz.test.mjs` (seeded) and `tests/storage.test.mjs`; `tests/midi-parse.mjs` reads exported MIDI back.
+Deferred: `strictNullChecks` (about 29 errors, none in the foundations files: audio, render and ui) and a UI retry of a failed autosave (`src/ui/projects.js`).
