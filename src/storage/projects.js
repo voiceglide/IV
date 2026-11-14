@@ -271,18 +271,20 @@ export function createProjectStorage(idbFactory = /** @type {any} */(globalThis)
      * Start saving a project this very moment, with nothing awaited before it: for the page going away (pagehide), where only what
      * is started inside the handler has any chance to finish. No conflict check is possible then, so a project that another tab changed
      * since this tab read it is refused (false): its edit survives through savePending instead. Returns whether a write was started.
-     * @param {Project} project
+     * `done(ok)` is called when the write has finished, if the page is still there to hear it.
+     * @param {Project} project @param {(ok:boolean)=>void} [done]
      */
-    putNow(project) {
+    putNow(project, done) {
       if (!project || typeof project.id !== 'string' || !project.id || stale.has(project.id)) return false;
       const id = project.id, rev = (known.get(id) || 0) + 1;
-      if (!db) { if (!memoryOnly) return false; mem.projects.set(id, { ...clone(project), rev }); known.set(id, rev); own(id, rev); return true; }
+      if (!db) { if (!memoryOnly) return false; mem.projects.set(id, { ...clone(project), rev }); known.set(id, rev); own(id, rev); if (done) done(true); return true; }
       try {
         const tx = db.transaction('projects', 'readwrite');
         tx.objectStore('projects').put({ ...project, rev });
         known.set(id, rev); own(id, rev);
-        tx.oncomplete = () => announce(id, rev, false);
-        tx.onabort = tx.onerror = () => { if (known.get(id) === rev) known.delete(id); };
+        let over = false;
+        tx.oncomplete = () => { announce(id, rev, false); if (done && !over) { over = true; done(true); } };
+        tx.onabort = tx.onerror = () => { if (known.get(id) === rev) known.delete(id); if (done && !over) { over = true; done(false); } };
         return true;
       } catch (e) { return false; }
     },
@@ -301,6 +303,7 @@ export function createProjectStorage(idbFactory = /** @type {any} */(globalThis)
         const p = pend.project, stored = await api.get(p.id);
         clearPending();
         if (stored && JSON.stringify(stored) === JSON.stringify(p)) return null;
+        if (stored && !pend.conflicted && stored.updatedAt >= p.updatedAt) return null; // a later save of this tab (or another) already holds it
         const blocked = !stored && (await api.list()).some(x => x.id === p.id); // an unreadable record of that id is never overwritten
         if (!blocked && (!stored || (!pend.conflicted && stored.updatedAt < p.updatedAt))) { await api.put(p, { force: true }); return { project: p, copy: false }; }
         const copy = { ...p, id: newId(), name: p.name.slice(0, 60) + ' (recovered)', updatedAt: Date.now() };

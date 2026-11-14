@@ -96,7 +96,9 @@ test('an edit kept in localStorage comes back at the next start', async () => {
   next.savePending(/** @type {any} */(await next.get(p.id)));
   assert.equal(await next.recoverPending(), null);
   // a newer stored version, or an edit refused as a conflict: kept as a copy
-  next.savePending({ ...p, tempo: 77, updatedAt: 1500 });
+  next.savePending({ ...p, tempo: 66, updatedAt: 1500 });
+  assert.equal(await next.recoverPending(), null);               // already superseded by a later save: nothing to recover
+  next.savePending({ ...p, tempo: 77, updatedAt: 1500 }, true);
   const copy = await next.recoverPending();
   assert.ok(copy); assert.equal(copy.copy, true); assert.match(copy.project.name, /recovered/); assert.notEqual(copy.project.id, p.id); assert.equal(copy.project.tempo, 77);
   assert.equal((await next.get(p.id)).tempo, 201);
